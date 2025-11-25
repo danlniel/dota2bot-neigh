@@ -87,7 +87,7 @@
 			variance 			= {1, 1},
 			-- awards are clamped to these numbers. Note that if you make the minimum non-zero, then the
 			-- bot's actual GPM will increase by that amount every minute (you don't want to do this)
-			clamp 				= {0, 25},
+			clamp 				= {0, 30},
 			-- ignore clamps?
 			clampOverride 		= false,
 			-- scales (per role) for multipliers if necessary
@@ -100,7 +100,7 @@
 		{
 			offset 				= 0,
 			variance 			= {1, 1},
-			clamp 				= {0, 25},
+			clamp 				= {0, 30},
 			clampOverride 		= false,
 			scale 				= {1.2, 1.1, 1.0, 0.9, 0.9},
 			perMinuteScale		= 0.5
@@ -116,11 +116,11 @@
 			enabled =
 			{
 				gold 			= true,
-				armor 			= true,
-				magicResist 	= true,
+				armor 			= false,
+				magicResist 	= false,
 				levels 			= true,
 				neutral 		= true,
-				stats 			= true
+				stats 			= false
 			},
 			-- Further option to only enable if the bots are behind in kills
 			isEnabledOnlyWhenBehind =
@@ -315,7 +315,7 @@
 		-- still, it's probably better to just fix neutral timing rather than award one here
 		gameStartBonus =
 		{
-				gold 			= 100,
+				gold 			= 400,
 				armor 			= 0.1,
 				magicResist 	= 0.1,
 				levels 			= 0.1,
@@ -324,9 +324,9 @@
 		},
 		gameStartBonusTimesDifficulty =
 		{
-				gold 			= 60,
-				armor 			= 1,
-				magicResist 	= 1,
+				gold 			= 100,
+				armor 			= 0.1,
+				magicResist 	= 0.1,
 				levels 			= 0,
 				neutral       	= 1,
 				stats 			= 1
@@ -410,18 +410,18 @@
 			stats =
 			{
 				enabled					= true,
-				advantageThreshold		= 7,
+				advantageThreshold		= 4,
 				incrementEvery			= 2,
-				base					= 1,
+				base					= 0.2,
 				increment 				= 1,
-				cap 					= 5,
+				cap 					= 2,
 				announce 				= false,
 				-- chanceAdjust is optional and will adjust the base chance for
 				-- death awards for each knob.
 				chanceAdjust =
 				{
 					enabled				= true,
-					advantageThreshold	= 7,
+					advantageThreshold	= 4,
 					incrementEvery		= 0,
 					base				= 0.5,
 					increment 			= 0,

@@ -8,7 +8,7 @@ local LanguageCode = 'en'
 local Localization = {
     en = {
         welcome_msgs = {
-            "Welcome to Open Hyper AI (OHA): ",
+            "Welcome to Open Neigh AI (OHA): ",
             "You can select the heroes for bots to pick, e.g. 10 same heroes or your dream teams, or change their names. Just customize bots in the Customize/general file.",
             "If you feel bots are weak, try enabling the enhanced Fretbots mode to make the game a lot more challenging. Check Workshop page for details.",
             "You can type `!pos X` to swap position with a bot. For example, type: `!pos 2` to go mid lane. Type `!3pos 5` to ask the 3rd bot on the team to play position 5.",

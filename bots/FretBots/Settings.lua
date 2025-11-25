@@ -333,15 +333,16 @@ function Settings:ApplyVoteSettings()
 end
 
 function StartCallback(resJsonObj)
-	if resJsonObj.allowed_diff and resJsonObj.allowed_diff > 0 then
-		local diffNum = tonumber(resJsonObj.allowed_diff)
-		if diffNum < Settings.difficulty then
-			print('Host is not allowed to host this difficulty level. Max allowed: '.. diffNum)
-			Utilities:Print(string.format(Localization.Get('fret_default_diff_limit'), diffNum, diffNum, resJsonObj.needed_wins, Settings.difficulty, diffNum), MSG_WARNING)
-			Settings.difficulty = diffNum
-			Settings.difficultyScale = Settings:CalculateDifficultyScale(diffNum)
-		end
-    end
+	-- Difficulty restriction removed - players can now select any difficulty (0-10)
+	-- if resJsonObj.allowed_diff and resJsonObj.allowed_diff > 0 then
+	-- 	local diffNum = tonumber(resJsonObj.allowed_diff)
+	-- 	if diffNum < Settings.difficulty then
+	-- 		print('Host is not allowed to host this difficulty level. Max allowed: '.. diffNum)
+	-- 		Utilities:Print(string.format(Localization.Get('fret_default_diff_limit'), diffNum, diffNum, resJsonObj.needed_wins, Settings.difficulty, diffNum), MSG_WARNING)
+	-- 		Settings.difficulty = diffNum
+	-- 		Settings.difficultyScale = Settings:CalculateDifficultyScale(diffNum)
+	-- 	end
+    -- end
 
 	Chat.StartCallback(resJsonObj)
 end
