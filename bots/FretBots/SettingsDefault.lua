@@ -315,21 +315,21 @@
 		-- still, it's probably better to just fix neutral timing rather than award one here
 		gameStartBonus =
 		{
-				gold 			= 400,
-				armor 			= 0.1,
-				magicResist 	= 0.1,
-				levels 			= 0.1,
+				gold 			= 300,
+				armor 			= 0,
+				magicResist 	= 0,
+				levels 			= 0.5,
 				neutral       	= 0,
-				stats 			= 1,
+				stats 			= 0,
 		},
 		gameStartBonusTimesDifficulty =
 		{
-				gold 			= 100,
-				armor 			= 0.1,
-				magicResist 	= 0.1,
-				levels 			= 0,
+				gold 			= 50,
+				armor 			= 0,
+				magicResist 	= 0,
+				levels 			= 0.1,
 				neutral       	= 1,
-				stats 			= 1
+				stats 			= 0
 		},
 		-- caps for awards per game
 		awardCap =
@@ -351,8 +351,7 @@
 			{
 				'gpm',
 				'xpm',
-				'levels',
-				'stats'
+				'levels'
 			},
 			-- Settings related to kill deficits
 			gpm =
@@ -364,14 +363,14 @@
 				-- Awards scaled by scale amount every <this many> kills beyond the threshold
 				incrementEvery = 1,
 				-- base bonus increased by this much when over threshold
-				base = 22,
+				base = 20,
 				-- incremental amounts are added to the base every time
 				-- the increment amount is reached, i.e. if threshold is 5,
 				-- incrementEvery is 2, and the bots are 9 kills behind,
 				-- then the nudge will be base + (increment * 2)
 				increment = 10,
 				-- maximum for this bonus
-				cap = 200,
+				cap = 150,
 				-- If true, adjustments are announced to chat.
 				announce = false
 			},
@@ -382,7 +381,7 @@
 				incrementEvery 		= 1,
 				base				= 10,
 				increment 			= 5,
-				cap 				= 200,
+				cap 				= 100,
 				announce 			= false
 			},
 			levels =
@@ -409,7 +408,7 @@
 			},
 			stats =
 			{
-				enabled					= true,
+				enabled					= false,
 				advantageThreshold		= 4,
 				incrementEvery			= 2,
 				base					= 0.2,

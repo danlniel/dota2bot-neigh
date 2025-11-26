@@ -32,9 +32,9 @@ local TeamKillsTrackingTable = {
 local TauntModifierTimers = {}
 local TauntTime = 4
 local GoldPenaltyNetworthDiffThreshold = 200
-local GoldPenaltyPercentageMax = 0.85
-local GoldPenaltyAmountMax = -5000
-local GoldPenaltyAmountMin = -50
+local GoldPenaltyPercentageMax = 0
+local GoldPenaltyAmountMax = 0
+local GoldPenaltyAmountMin = 0
 local GoldPenaltyDiffRatioMultipler = 1.25
 local GoldPenaltyTimeFactor = 30 * 60 -- after 25 mins, use full penalty.
 
@@ -143,7 +143,7 @@ function EntityKilled:GetEntityKilledEventData(event)
 			TeamKillsTrackingTable[killer.stats.team] = TeamKillsTrackingTable[killer.stats.team] + 1
 			-- 当击杀者是人类玩家时，给与击杀惩罚
 			if not IsGoldTrackingRunning and not killer.stats.isBot then
-				local goldPerLevel = -26
+				local goldPerLevel = 0
 				if Utilities:IsTurboMode() then
 					goldPerLevel = goldPerLevel * 1.5
 				end
@@ -151,9 +151,10 @@ function EntityKilled:GetEntityKilledEventData(event)
 				-- 基于基础惩罚，死亡单位的等级，和难度来确定惩罚额度
 				local goldBounty = math.floor(goldPerLevel * heroLevel/4 * (Settings.difficultyScale * 3) - math.random(1, 30))
 				-- 给予击杀者赏金
-				killer:ModifyGold(goldBounty, true, DOTA_ModifyGold_HeroKill)
-				local msg = string.format(Localization.Get('fret_killer_panelty'), PlayerResource:GetPlayerName(killer:GetPlayerID()), goldBounty)
-				Utilities:Print(msg, Utilities:GetPlayerColor(killer:GetPlayerID()))
+				-- Commented out for now to make game more balance
+				-- killer:ModifyGold(goldBounty, true, DOTA_ModifyGold_HeroKill)
+				-- local msg = string.format(Localization.Get('fret_killer_panelty'), PlayerResource:GetPlayerName(killer:GetPlayerID()), goldBounty)
+				-- Utilities:Print(msg, Utilities:GetPlayerColor(killer:GetPlayerID()))
 			end
 		end
 	end
