@@ -111,7 +111,7 @@ Customize.Fretbots = {
     Default_Ally_Scale = 1,
 
     -- Set whether or not allowing the team to vote for difficulty. If false, will directly apply the default difficulty.
-    Allow_To_Vote = false,
+    Allow_To_Vote = true,
 
     -- Set to false disables all sounds from Fretbots mode
     Play_Sounds = true,
