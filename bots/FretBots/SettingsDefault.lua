@@ -109,7 +109,7 @@
 		{
 			-- Order awards are given (useful when maxAwards is less than number of types)
 			-- this also defines the names of the types (used to index tables for other settings)
-			order = {'neutral', 'levels', 'stats', 'armor', 'magicResist', 'gold'},
+			order = {'levels', 'gold', 'neutral'},
 			--The maximum number of awards per death
 			maxAwards = 2,
 			-- individual bonus enables
