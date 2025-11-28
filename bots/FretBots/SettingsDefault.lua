@@ -100,7 +100,7 @@
 		{
 			offset 				= 0,
 			variance 			= {1, 1},
-			clamp 				= {0, 30},
+			clamp 				= {0, 15},
 			clampOverride 		= false,
 			scale 				= {1.2, 1.1, 1.0, 0.9, 0.9},
 			perMinuteScale		= 0.5
@@ -315,7 +315,7 @@
 		-- still, it's probably better to just fix neutral timing rather than award one here
 		gameStartBonus =
 		{
-				gold 			= 300,
+				gold 			= 100,
 				armor 			= 0,
 				magicResist 	= 0,
 				levels 			= 0.5,
@@ -324,10 +324,10 @@
 		},
 		gameStartBonusTimesDifficulty =
 		{
-				gold 			= 50,
+				gold 			= 30,
 				armor 			= 0,
 				magicResist 	= 0,
-				levels 			= 0.1,
+				levels 			= 0,
 				neutral       	= 1,
 				stats 			= 0
 		},
@@ -363,7 +363,7 @@
 				-- Awards scaled by scale amount every <this many> kills beyond the threshold
 				incrementEvery = 1,
 				-- base bonus increased by this much when over threshold
-				base = 20,
+				base = 15,
 				-- incremental amounts are added to the base every time
 				-- the increment amount is reached, i.e. if threshold is 5,
 				-- incrementEvery is 2, and the bots are 9 kills behind,
