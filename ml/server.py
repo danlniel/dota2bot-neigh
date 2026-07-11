@@ -34,20 +34,46 @@ class Policy:
     """Decision logic. Heuristic baseline; swaps to trained weights if ml/model.json exists."""
 
     # ---- bots VM: FightIQ parameter tuning -------------------------------
-    def fightiq(self, snapshot: dict) -> dict:
+    def features(self, snapshot: dict, client: str = "?") -> dict:
+        """Feature vector shared by serving and training (see ml/train.py).
+
+        Enemy networth isn't visible to the bots VM, so the gap comes from the
+        addon VM's /director stream, cached per client (fresh <60s or 0).
+        """
+        players = snapshot.get("players", [])
+        t = snapshot.get("time", 0)
+        ally_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "ally")
+        enemy_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "enemy")
+        ally_nw = sum(p.get("networth", 0) for p in players if p.get("team") == "ally")
+        towers = snapshot.get("towers") or {}
+
+        nw_gap = 0.0
+        state = self._director_state.get(client)
+        if state and time.time() - state["ts"] < 60:
+            ally_side = "Radiant" if snapshot.get("team") == 2 else "Dire"
+            enemy_side = "Dire" if ally_side == "Radiant" else "Radiant"
+            nw_gap = (state.get(ally_side, 0) - state.get(enemy_side, 0)) / 1000.0
+
+        return {
+            "kill_diff": ally_kills - enemy_kills,
+            "time_norm": min(t / 2400.0, 1.5),
+            "ally_nw_pm": ally_nw / max(1.0, t / 60.0) / 1000.0,  # team GPM in k
+            "tower_gap": towers.get("ally", 0) - towers.get("enemy", 0),
+            "nw_gap": nw_gap,
+        }
+
+    def fightiq(self, snapshot: dict, client: str = "?") -> dict:
         """Return FightIQ overrides for the requesting team.
 
         Baseline heuristic: when the bot team is behind on kills, play more
         disciplined (higher commit margin — only take clearly-won fights).
         When ahead, press the advantage with a lower margin.
         """
-        players = snapshot.get("players", [])
-        ally_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "ally")
-        enemy_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "enemy")
-        kill_diff = ally_kills - enemy_kills
+        feats = self.features(snapshot, client)
+        kill_diff = feats["kill_diff"]
 
         if self.model is not None:
-            return self._model_fightiq(snapshot, kill_diff)
+            return self._model_fightiq(feats)
 
         if kill_diff <= -8:
             margin = 1.18   # far behind: only take stomps
@@ -61,11 +87,11 @@ class Policy:
             margin = 1.05
         return {"Commit_Margin": round(margin, 3)}
 
-    def _model_fightiq(self, snapshot: dict, kill_diff: int) -> dict:
-        """Tiny linear model: params = base + w * features. See ml/train.py."""
+    def _model_fightiq(self, feats: dict) -> dict:
+        """Linear model over the feature vector: margin = bias + w · feats."""
         w = self.model.get("fightiq", {})
-        t = min(snapshot.get("time", 0) / 2400.0, 1.5)  # game time, ~40min normalized
-        margin = w.get("bias", 1.05) + w.get("w_kill_diff", 0.0) * kill_diff + w.get("w_time", 0.0) * t
+        weights = w.get("weights", {})
+        margin = w.get("bias", 1.05) + sum(weights.get(k, 0.0) * v for k, v in feats.items())
         return {"Commit_Margin": round(max(0.9, min(1.3, margin)), 3)}
 
     # ---- FretBots VM: adaptive difficulty --------------------------------
@@ -77,7 +103,8 @@ class Policy:
 
     def __init__(self):
         self.model = None
-        self._last_adjust = {}  # client -> unix ts of last difficulty change
+        self._last_adjust = {}     # client -> unix ts of last difficulty change
+        self._director_state = {}  # client -> {"Radiant": nw, "Dire": nw, "ts": ...}
         if os.path.exists(MODEL_PATH):
             with open(MODEL_PATH) as f:
                 self.model = json.load(f)
@@ -105,6 +132,11 @@ class Policy:
                 side_nw[side] += int(h.get("networth", 0) or 0)
                 if not h.get("is_bot"):
                     human_side = side
+
+        # cache side networth so /policy can compute the networth gap
+        self._director_state[client] = {
+            "Radiant": side_nw["Radiant"], "Dire": side_nw["Dire"], "ts": time.time(),
+        }
 
         difficulty = snapshot.get("difficulty", 5)
         directive = {"difficulty": difficulty, "announce": False}
@@ -190,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
         payload.pop("api_key", None)  # never write secrets into the dataset
 
         if self.path == "/policy":
-            result = {"fightiq": self.policy.fightiq(payload)}
+            result = {"fightiq": self.policy.fightiq(payload, self.client_address[0])}
         elif self.path == "/director":
             result = self.policy.director(payload, self.client_address[0])
         else:

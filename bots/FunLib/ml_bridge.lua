@@ -78,25 +78,72 @@ local function ApplyOverrides(overrides)
 	effectiveFightIQ = merged
 end
 
+-- Per-field fail-safes: one missing engine API must never cost the whole
+-- snapshot; unknown values become 0/nil and the trainer treats them as such.
+local function SafeNum(fn, ...)
+	local ok, v = pcall(fn, ...)
+	if ok and type(v) == 'number' then return v end
+	return 0
+end
+
+local function SafeStr(fn, ...)
+	local ok, v = pcall(fn, ...)
+	if ok and type(v) == 'string' then return v end
+	return nil
+end
+
+local TOWER_IDS = {
+	TOWER_TOP_1, TOWER_TOP_2, TOWER_TOP_3,
+	TOWER_MID_1, TOWER_MID_2, TOWER_MID_3,
+	TOWER_BOT_1, TOWER_BOT_2, TOWER_BOT_3,
+	TOWER_BASE_1, TOWER_BASE_2,
+}
+
+local function CountStandingTowers(nTeam)
+	local n = 0
+	for _, towerId in pairs(TOWER_IDS) do
+		local ok, tower = pcall(GetTower, nTeam, towerId)
+		if ok and tower ~= nil and not tower:IsNull() and tower:IsAlive() then
+			n = n + 1
+		end
+	end
+	return n
+end
+
 local function BuildSnapshot(bot)
 	local snapshot = {
 		api_key = (ML.Api_Key ~= nil and ML.Api_Key ~= '') and ML.Api_Key or nil,
 		time = DotaTime(),
 		team = GetTeam(),
 		players = {},
+		towers = {
+			ally = CountStandingTowers(GetTeam()),
+			enemy = CountStandingTowers(GetOpposingTeam()),
+		},
+		roshan_kill_time = SafeNum(GetRoshanKillTime),
 	}
-	for _, id in pairs(GetTeamPlayers(GetTeam())) do
+	-- allies: full detail (handles available for own team)
+	for i, id in pairs(GetTeamPlayers(GetTeam())) do
+		local member = GetTeamMember(i)
 		table.insert(snapshot.players, {
 			team = 'ally',
+			hero = SafeStr(GetSelectedHeroName, id),
 			kills = GetHeroKills(id) or 0,
 			deaths = GetHeroDeaths(id) or 0,
+			assists = SafeNum(GetHeroAssists, id),
+			level = member ~= nil and SafeNum(member.GetLevel, member) or 0,
+			networth = member ~= nil and SafeNum(member.GetNetWorth, member) or 0,
+			last_hits = member ~= nil and SafeNum(member.GetLastHits, member) or 0,
 		})
 	end
+	-- enemies: scoreboard facts only (networth/level need handles we may not have)
 	for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
 		table.insert(snapshot.players, {
 			team = 'enemy',
+			hero = SafeStr(GetSelectedHeroName, id),
 			kills = GetHeroKills(id) or 0,
 			deaths = GetHeroDeaths(id) or 0,
+			assists = SafeNum(GetHeroAssists, id),
 		})
 	end
 	-- current effective params, so the dataset records what policy was active
