@@ -107,14 +107,18 @@ Customize.Force_Group_Push_Level = 1
 -- For more about Fretbots mode: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68
 -- Note: these settings below will override the pre-defind settings in Fretbots folder.
 Customize.Fretbots = {
-    -- Default difficulty, a number between: [0, 10]
-    Default_Difficulty = 10,
+    -- ADAPTIVE MODE: difficulty is managed automatically by the ML director
+    -- (see Customize.ML below). This value is only the starting point; the
+    -- director steers it up/down during the game to keep matches close.
+    -- If the ML server is unreachable, the game stays at this value and
+    -- FretBots' built-in rubber-band (dynamicDifficulty) still applies.
+    Default_Difficulty = 5,
 
-    -- Default ally bots bonus scale comparing to enemy bots, a number between: [0, 1]
+    -- Ally bots get the same treatment as enemy bots (fair teams).
     Default_Ally_Scale = 1,
 
-    -- Set whether or not allowing the team to vote for difficulty. If false, will directly apply the default difficulty.
-    Allow_To_Vote = true,
+    -- Voting disabled: difficulty is automatic, nobody needs to set anything.
+    Allow_To_Vote = false,
 
     -- Set to false disables all sounds from Fretbots mode
     Play_Sounds = true,

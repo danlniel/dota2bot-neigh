@@ -80,8 +80,11 @@ bots VM client cannot set headers). Wrong key → 401.
   bots demand before committing to fights (see `Customize.FightIQ`). The server
   can also override `Ult_Ready_Bonus`, `Ult_Down_Penalty`,
   `Disabled_Power_Scale` — any numeric FightIQ key is applied live.
-- **`/director` → difficulty**: keeps the human-vs-bot kill gap inside a flow
-  band by nudging FretBots difficulty one step at a time.
+- **`/director` → adaptive difficulty**: fully automatic — no vote, no manual
+  setting. Computes the human team's advantage in kill-equivalents
+  (`kill_gap + networth_gap/1000`) and steers FretBots difficulty one step at
+  a time toward balance, with a deadband (±3), a 90s cooldown per lobby, and
+  a 4-minute early-game grace period. Changes are announced in chat.
 
 ## Why this design (research summary)
 

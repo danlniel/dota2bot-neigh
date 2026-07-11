@@ -33,15 +33,6 @@ MODEL_PATH = os.environ.get("ML_MODEL_PATH") or os.path.join(os.path.dirname(os.
 class Policy:
     """Decision logic. Heuristic baseline; swaps to trained weights if ml/model.json exists."""
 
-    def __init__(self):
-        self.model = None
-        if os.path.exists(MODEL_PATH):
-            with open(MODEL_PATH) as f:
-                self.model = json.load(f)
-            print(f"[policy] loaded trained model from {MODEL_PATH}")
-        else:
-            print("[policy] no trained model found, using heuristic baseline")
-
     # ---- bots VM: FightIQ parameter tuning -------------------------------
     def fightiq(self, snapshot: dict) -> dict:
         """Return FightIQ overrides for the requesting team.
@@ -77,21 +68,41 @@ class Policy:
         margin = w.get("bias", 1.05) + w.get("w_kill_diff", 0.0) * kill_diff + w.get("w_time", 0.0) * t
         return {"Commit_Margin": round(max(0.9, min(1.3, margin)), 3)}
 
-    # ---- FretBots VM: difficulty directive -------------------------------
-    def director(self, snapshot: dict) -> dict:
-        """Return a difficulty directive based on full game state.
+    # ---- FretBots VM: adaptive difficulty --------------------------------
+    # Fully automatic: nobody sets difficulty. The game starts at a neutral
+    # level and this controller steers it to keep the match close.
+    MIN_GAME_TIME = 240      # let the laning phase establish a signal first
+    ADJUST_COOLDOWN = 90     # seconds between changes (per client)
+    DEADBAND = 3.0           # |advantage| below this = balanced, no change
 
-        Baseline: keep the kill gap between the human team and the enemy team
-        inside a flow band by nudging FretBots difficulty one step at a time.
-        The comparison is team vs team — the human's ally bots count for the
-        human side, otherwise a lone human "loses" to their own team's kills.
+    def __init__(self):
+        self.model = None
+        self._last_adjust = {}  # client -> unix ts of last difficulty change
+        if os.path.exists(MODEL_PATH):
+            with open(MODEL_PATH) as f:
+                self.model = json.load(f)
+            print(f"[policy] loaded trained model from {MODEL_PATH}")
+        else:
+            print("[policy] no trained model found, using heuristic baseline")
+
+    def director(self, snapshot: dict, client: str = "?") -> dict:
+        """Adaptive difficulty controller.
+
+        Advantage of the human team over the enemy team, in "kill equivalents":
+            advantage = kill_gap + networth_gap / 1000
+        Steering: outside the deadband, move difficulty one step toward
+        balance, at most once per cooldown window. Kills + networth together
+        react faster and more fairly than kills alone (a farming human is
+        "winning" before the kills show it).
         """
         heroes = snapshot.get("heroes", {})
         side_kills = {"Radiant": 0, "Dire": 0}
+        side_nw = {"Radiant": 0, "Dire": 0}
         human_side = None
         for side in ("Radiant", "Dire"):
             for h in heroes.get(side, []):
                 side_kills[side] += int(str(h.get("kda", "0/0/0")).split("/")[0])
+                side_nw[side] += int(h.get("networth", 0) or 0)
                 if not h.get("is_bot"):
                     human_side = side
 
@@ -99,13 +110,26 @@ class Policy:
         directive = {"difficulty": difficulty, "announce": False}
         if human_side is None:  # bot-vs-bot game: nothing to balance for
             return directive
+        if snapshot.get("game_time", 0) < self.MIN_GAME_TIME:
+            return directive
+
+        now = time.time()
+        if now - self._last_adjust.get(client, 0) < self.ADJUST_COOLDOWN:
+            return directive
 
         enemy_side = "Dire" if human_side == "Radiant" else "Radiant"
-        gap = side_kills[human_side] - side_kills[enemy_side]
-        if gap >= 10 and difficulty < 10:
+        kill_gap = side_kills[human_side] - side_kills[enemy_side]
+        nw_gap = (side_nw[human_side] - side_nw[enemy_side]) / 1000.0
+        advantage = kill_gap + nw_gap
+
+        if advantage >= self.DEADBAND and difficulty < 10:
             directive["difficulty"] = difficulty + 1
-        elif gap <= -10 and difficulty > 0:
+        elif advantage <= -self.DEADBAND and difficulty > 0:
             directive["difficulty"] = difficulty - 1
+
+        if directive["difficulty"] != difficulty:
+            directive["announce"] = True
+            self._last_adjust[client] = now
         return directive
 
 
@@ -168,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/policy":
             result = {"fightiq": self.policy.fightiq(payload)}
         elif self.path == "/director":
-            result = self.policy.director(payload)
+            result = self.policy.director(payload, self.client_address[0])
         else:
             self._respond({"error": "unknown endpoint"}, 404)
             return

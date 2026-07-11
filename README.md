@@ -96,8 +96,12 @@ still works, bots simply use the static settings.
 
 1. Dota 2 → Play → **Custom Lobby** → Server Location: **Local Host**.
 2. Add bots, start. Bot names ending in **".OHA"** = install worked.
-3. Difficulty: type a number **0–10 in all-chat** during hero pick to vote
-   (e.g. `5`), or it falls back to `Default_Difficulty`.
+3. **Difficulty is automatic in this fork** — no vote, no setting. Games start
+   at a neutral level and the ML server steers bot bonuses up/down during the
+   game (kills + networth) to keep the match close. Changes are announced in
+   chat. Ally bots and enemy bots are treated the same. (No ML server
+   reachable → the game stays at `Default_Difficulty` with FretBots' built-in
+   rubber-band.)
 
 ### (Optional) Run your own ML server
 
