@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Local model server for dota2bot-neigh.
+
+Two Lua clients talk to this server during a game:
+
+  * /policy   — bots VM (bots/FunLib/ml_bridge.lua). Receives compact team
+                snapshots, returns FightIQ parameter overrides.
+  * /director — FretBots addon VM (bots/FretBots/MLDirector.lua). Receives the
+                full hero stats table, returns a difficulty directive.
+
+Every request is appended to ml/data/session-<date>.jsonl so games double as
+training data collection. Decision logic lives in Policy below: today a
+transparent heuristic, with a hook to load trained weights from ml/model.json
+(produced by ml/train.py) when present.
+
+Run:  python3 ml/server.py       (stdlib only, no dependencies)
+"""
+import json
+import os
+import time
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# Defaults are localhost-only. For a shared deployment (e.g. Docker on a home
+# server) set ML_HOST=0.0.0.0 and ML_API_KEY to require an Authorization header.
+HOST = os.environ.get("ML_HOST", "127.0.0.1")
+PORT = int(os.environ.get("ML_PORT", "5544"))
+API_KEY = os.environ.get("ML_API_KEY", "")
+DATA_DIR = os.environ.get("ML_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+MODEL_PATH = os.environ.get("ML_MODEL_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")
+
+
+class Policy:
+    """Decision logic. Heuristic baseline; swaps to trained weights if ml/model.json exists."""
+
+    def __init__(self):
+        self.model = None
+        if os.path.exists(MODEL_PATH):
+            with open(MODEL_PATH) as f:
+                self.model = json.load(f)
+            print(f"[policy] loaded trained model from {MODEL_PATH}")
+        else:
+            print("[policy] no trained model found, using heuristic baseline")
+
+    # ---- bots VM: FightIQ parameter tuning -------------------------------
+    def fightiq(self, snapshot: dict) -> dict:
+        """Return FightIQ overrides for the requesting team.
+
+        Baseline heuristic: when the bot team is behind on kills, play more
+        disciplined (higher commit margin — only take clearly-won fights).
+        When ahead, press the advantage with a lower margin.
+        """
+        players = snapshot.get("players", [])
+        ally_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "ally")
+        enemy_kills = sum(p.get("kills", 0) for p in players if p.get("team") == "enemy")
+        kill_diff = ally_kills - enemy_kills
+
+        if self.model is not None:
+            return self._model_fightiq(snapshot, kill_diff)
+
+        if kill_diff <= -8:
+            margin = 1.18   # far behind: only take stomps
+        elif kill_diff <= -3:
+            margin = 1.10
+        elif kill_diff >= 8:
+            margin = 0.98   # far ahead: force fights, close the game
+        elif kill_diff >= 3:
+            margin = 1.02
+        else:
+            margin = 1.05
+        return {"Commit_Margin": round(margin, 3)}
+
+    def _model_fightiq(self, snapshot: dict, kill_diff: int) -> dict:
+        """Tiny linear model: params = base + w * features. See ml/train.py."""
+        w = self.model.get("fightiq", {})
+        t = min(snapshot.get("time", 0) / 2400.0, 1.5)  # game time, ~40min normalized
+        margin = w.get("bias", 1.05) + w.get("w_kill_diff", 0.0) * kill_diff + w.get("w_time", 0.0) * t
+        return {"Commit_Margin": round(max(0.9, min(1.3, margin)), 3)}
+
+    # ---- FretBots VM: difficulty directive -------------------------------
+    def director(self, snapshot: dict) -> dict:
+        """Return a difficulty directive based on full game state.
+
+        Baseline: keep the kill gap between the human team and the enemy team
+        inside a flow band by nudging FretBots difficulty one step at a time.
+        The comparison is team vs team — the human's ally bots count for the
+        human side, otherwise a lone human "loses" to their own team's kills.
+        """
+        heroes = snapshot.get("heroes", {})
+        side_kills = {"Radiant": 0, "Dire": 0}
+        human_side = None
+        for side in ("Radiant", "Dire"):
+            for h in heroes.get(side, []):
+                side_kills[side] += int(str(h.get("kda", "0/0/0")).split("/")[0])
+                if not h.get("is_bot"):
+                    human_side = side
+
+        difficulty = snapshot.get("difficulty", 5)
+        directive = {"difficulty": difficulty, "announce": False}
+        if human_side is None:  # bot-vs-bot game: nothing to balance for
+            return directive
+
+        enemy_side = "Dire" if human_side == "Radiant" else "Radiant"
+        gap = side_kills[human_side] - side_kills[enemy_side]
+        if gap >= 10 and difficulty < 10:
+            directive["difficulty"] = difficulty + 1
+        elif gap <= -10 and difficulty > 0:
+            directive["difficulty"] = difficulty - 1
+        return directive
+
+
+class Handler(BaseHTTPRequestHandler):
+    policy = Policy()
+    log_path = os.path.join(DATA_DIR, f"session-{datetime.now():%Y%m%d}.jsonl")
+
+    def _respond(self, obj: dict, code: int = 200):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _log(self, endpoint: str, request_obj: dict, response_obj: dict):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps({
+                "ts": time.time(),
+                "client": self.client_address[0],  # lets train.py separate concurrent games
+                "endpoint": endpoint,
+                "request": request_obj,
+                "response": response_obj,
+            }) + "\n")
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 1_000_000:  # snapshots are a few KB; reject junk
+            self._respond({"error": "payload too large"}, 413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self._respond({"error": "bad json"}, 400)
+            return
+
+        # key may come as a header (addon VM client) or in the body (bots VM
+        # client — CreateRemoteHTTPRequest cannot set headers)
+        if API_KEY:
+            supplied = self.headers.get("Authorization", "") or payload.get("api_key", "")
+            if supplied != API_KEY:
+                self._respond({"error": "unauthorized"}, 401)
+                return
+        payload.pop("api_key", None)  # never write secrets into the dataset
+
+        if self.path == "/policy":
+            result = {"fightiq": self.policy.fightiq(payload)}
+        elif self.path == "/director":
+            result = self.policy.director(payload)
+        else:
+            self._respond({"error": "unknown endpoint"}, 404)
+            return
+
+        self._log(self.path, payload, result)
+        self._respond(result)
+
+    def log_message(self, fmt, *args):  # quiet the default per-request stderr noise
+        pass
+
+
+if __name__ == "__main__":
+    print(f"model server listening on http://{HOST}:{PORT}  (dataset -> {DATA_DIR})")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

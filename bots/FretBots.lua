@@ -36,6 +36,8 @@ require 'bots.FretBots.RoleDetermination'
 -- Neutral items
 require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
+-- ML Director (adaptive difficulty via local model server, see ml/README.md)
+require 'bots.FretBots.MLDirector'
 
 -- Instantiate ourself
 if FretBots == nil then

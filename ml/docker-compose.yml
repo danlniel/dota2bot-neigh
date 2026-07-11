@@ -1,0 +1,13 @@
+services:
+  ml-server:
+    build: .
+    container_name: dota2bot-ml
+    restart: unless-stopped
+    ports:
+      - "5544:5544"
+    environment:
+      # set a key if the server is reachable from outside your LAN;
+      # players put the same value in Customize.ML.Api_Key
+      ML_API_KEY: ""
+    volumes:
+      - ./data:/data
