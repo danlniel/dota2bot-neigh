@@ -117,8 +117,10 @@ Customize.Fretbots = {
     -- Ally bots get the same treatment as enemy bots (fair teams).
     Default_Ally_Scale = 1,
 
-    -- Voting disabled: difficulty is automatic, nobody needs to set anything.
-    Allow_To_Vote = false,
+    -- Voting allowed: a chat vote (0-10 at game start) picks the STARTING
+    -- difficulty; the ML director still adapts from there during the game.
+    -- No vote -> starts at Default_Difficulty above.
+    Allow_To_Vote = true,
 
     -- Set to false disables all sounds from Fretbots mode
     Play_Sounds = true,
