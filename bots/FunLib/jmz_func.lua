@@ -3493,6 +3493,70 @@ function J.GetAttackableWeakestUnit( bot, nRadius, bHero, bEnemy )
     return J.GetAttackableWeakestUnitFromList( bot, unitList )
 end
 
+-- ==============================
+-- Team focus-fire (roadmap 02)
+-- ==============================
+-- During a teamfight, the team's captain bot "calls" one kill target; the
+-- targeting score in GetAttackableWeakestUnitFromList gives that unit a
+-- bonus so the whole team converges instead of spreading damage.
+-- Module state is per-VM = per-team, so each team runs its own calls.
+local teamFocusTarget = nil
+local teamFocusCallTime = -9999
+
+-- The active called target, or nil if none/expired/dead/unkillable.
+function J.GetTeamFocusTarget()
+	local iq = GetFightIQ()
+	if iq == nil or iq.Team_Focus == false then return nil end
+
+	if DotaTime() - teamFocusCallTime > (iq.Team_Focus_Window or 6) then
+		return nil
+	end
+
+	if teamFocusTarget == nil
+	or not J.Utils.IsValidUnit(teamFocusTarget)
+	or not teamFocusTarget:CanBeSeen()
+	or J.CannotBeKilled(nil, teamFocusTarget)
+	or J.IsSuspiciousIllusion(teamFocusTarget)
+	then
+		return nil
+	end
+
+	return teamFocusTarget
+end
+
+-- Called from mode desire polling; only the team captain (first valid bot on
+-- the roster, same convention as ml_bridge) evaluates and makes the call.
+function J.ConsiderTeamFocus(bot)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Team_Focus == false then return end
+
+	-- captain-only, cheap bail for the other four bots
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member:IsBot() then
+			if member ~= bot then return end
+			break
+		end
+	end
+
+	if not bot:IsAlive() then return end
+
+	-- an active valid call stands until it expires or the target dies/escapes
+	if J.GetTeamFocusTarget() ~= nil then return end
+
+	if not J.IsInTeamFight(bot, 1600) then
+		teamFocusTarget = nil
+		return
+	end
+
+	local vFightLoc = J.GetTeamFightLocation(bot) or bot:GetLocation()
+	local nTarget = J.GetAttackableWeakestUnitFromList(bot, J.GetEnemiesNearLoc(vFightLoc, 1600))
+	if nTarget ~= nil then
+		teamFocusTarget = nTarget
+		teamFocusCallTime = DotaTime()
+	end
+end
+
 -- The arg `bot` here can be nil
 function J.GetAttackableWeakestUnitFromList( bot, unitList )
 	if bot == nil then bot = GetBot() end
@@ -3504,8 +3568,10 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
 	local iq = GetFightIQ()
 	local bFocusFire = iq ~= nil and iq.Focus_Fire ~= false
 	local tNearbyAllies = nil
+	local nCalledTarget = nil
 	if bFocusFire then
 		tNearbyAllies = J.GetAlliesNearLoc(bot:GetLocation(), 1600)
+		nCalledTarget = J.GetTeamFocusTarget()
 	end
 
     for _, unit in pairs( unitList ) do
@@ -3547,6 +3613,12 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
 						if ally ~= bot and (ally:GetAttackTarget() == unit or ally:GetTarget() == unit) then
 							score = score - unit:GetMaxHealth() * 0.08
 						end
+					end
+					-- team focus-fire: converge on the captain's called target
+					-- (a bonus, not an override: a genuinely almost-dead
+					-- alternative can still win)
+					if nCalledTarget ~= nil and unit == nCalledTarget then
+						score = score - unit:GetMaxHealth() * (iq.Team_Focus_Bonus or 0.25)
 					end
 					-- prefer closer targets over far chases
 					score = score + distance * 0.15

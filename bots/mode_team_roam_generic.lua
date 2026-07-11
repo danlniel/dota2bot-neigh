@@ -71,6 +71,7 @@ end
 
 function GetDesire()
     J.MLBridge.Think(bot)
+    J.ConsiderTeamFocus(bot)
 
     -- local cacheKey = 'GetTeamRoamDesire'..tostring(bot:GetPlayerID())
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))

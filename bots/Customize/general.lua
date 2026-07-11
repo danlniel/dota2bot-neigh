@@ -163,6 +163,12 @@ Customize.FightIQ = {
     Fog_Recent_Seconds = 10,   -- full threat weight if seen this recently
     Fog_Decay_Seconds = 25,    -- no weight beyond this many seconds unseen
     Fog_Near_Distance = 3000,  -- last-seen distance (to the bot) that counts
+
+    -- Team focus-fire: during teamfights the team captain "calls" one kill
+    -- target and all bots' targeting converges on it (bonus, not override).
+    Team_Focus = true,
+    Team_Focus_Window = 6,     -- seconds a call stays active
+    Team_Focus_Bonus = 0.25,   -- targeting bonus as a fraction of target max HP
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).
