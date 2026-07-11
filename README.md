@@ -33,45 +33,85 @@ For **FretBots mode** (harder bots, neutral items, chatbot): [Manual installatio
 
 ---
 
-## This Fork: FightIQ + ML Server
+## This Fork: FightIQ + ML Server — Install Guide
 
 This fork adds smarter fight logic (`Customize.FightIQ`) and an optional ML
-model server (`ml/`) on top of OpenHyperAI. These need a **manual install**
-(the upstream Workshop item doesn't have them).
+model server (`ml/`) on top of OpenHyperAI. These need a **manual install** —
+the upstream Workshop item does NOT have them.
 
-### Install the bot scripts
+### Step 1 — Get the scripts
 
-1. Find your Dota 2 vscripts folder:
-   * Windows: `<Steam>\steamapps\common\dota 2 beta\game\dota\scripts\vscripts`
-   * Linux: `~/.steam/steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts`
-   * macOS: `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts`
-2. Copy this repo's [`bots/`](bots/) folder there, so you end up with
-   `.../vscripts/bots/hero_selection.lua` etc.
-   ```
-   git clone https://github.com/danlniel/dota2bot-neigh.git
-   cp -r dota2bot-neigh/bots "<vscripts folder>/bots"
-   ```
-3. To keep your settings safe from future updates, also copy `bots/Customize`
-   to `.../vscripts/game/Customize`.
-4. Create a **Custom Lobby** → **Local Host** → play. Tune behavior in
-   [`Customize/general.lua`](bots/Customize/general.lua): difficulty
-   (`Customize.Fretbots`), fight intelligence (`Customize.FightIQ`),
-   reaction speed (`Customize.ThinkLess`), ML bridge (`Customize.ML`).
+```bash
+git clone https://github.com/danlniel/dota2bot-neigh.git
+```
+(or Code → Download ZIP and extract)
 
-### (Optional) ML model server
+### Step 2 — Copy `bots/` into Dota 2
 
-Bots work fine without it. With it, an external policy tunes fight behavior
-live, difficulty adapts to keep games close, and every game collects training
-data (`python3 ml/train.py`).
+Copy the repo's `bots/` folder into your Dota 2 vscripts folder:
 
-* Locally: `python3 ml/server.py` before creating the lobby.
-* Always-on (Docker, works on ARM boards like OrangePi):
-  `cd ml && docker compose up -d --build`
-* Pointing at a shared server: set `Customize.ML.Server` (and `Api_Key` if the
-  host requires one). A hosted instance runs at `https://dota.sunarjodaniel.xyz`
-  (check `/health`; ask the maintainer for an API key).
+| OS | vscripts folder |
+|---|---|
+| Windows | `C:\Program Files (x86)\Steam\steamapps\common\dota 2 beta\game\dota\scripts\vscripts` |
+| Linux | `~/.steam/steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts` |
+| macOS | `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts` |
 
-Details: [ml/README.md](ml/README.md).
+Correct result: `...\vscripts\bots\hero_selection.lua` exists.
+
+### Step 3 — Configure (THIS is where the API key goes)
+
+Open **`...\vscripts\bots\Customize\general.lua`** in any text editor.
+Everything you can tune is in this ONE file:
+
+```lua
+-- Bot difficulty 0-10 (stat/gold bonuses, FretBots)
+Customize.Fretbots = {
+    Default_Difficulty = 10,      -- used if nobody votes in chat
+    Allow_To_Vote = true,         -- type a number 0-10 in chat at game start to vote
+    ...
+}
+
+-- Fight intelligence (this fork). true = smarter fights
+Customize.FightIQ = {
+    Enable = true,
+    ...
+}
+
+-- ML server connection (this fork) — THE API KEY GOES HERE:
+Customize.ML = {
+    Enable = true,
+    Server = 'https://dota.sunarjodaniel.xyz',      -- or your own server
+    Api_Key = 'PASTE-THE-KEY-YOU-WERE-GIVEN-HERE',  -- <<<<< here
+    ...
+}
+```
+
+No key / no server? Just set `Customize.ML.Enable = false` — everything else
+still works, bots simply use the static settings.
+
+> Tip: copy the whole `Customize` folder to `...\vscripts\game\Customize` —
+> settings there survive script updates.
+
+### Step 4 — Play
+
+1. Dota 2 → Play → **Custom Lobby** → Server Location: **Local Host**.
+2. Add bots, start. Bot names ending in **".OHA"** = install worked.
+3. Difficulty: type a number **0–10 in all-chat** during hero pick to vote
+   (e.g. `5`), or it falls back to `Default_Difficulty`.
+
+### (Optional) Run your own ML server
+
+Only needed if you don't use the hosted one:
+
+```bash
+python3 ml/server.py                      # simplest: run before the lobby
+# or always-on with Docker (works on ARM boards like OrangePi):
+cd ml && docker compose up -d --build
+```
+
+Health check: `GET /health`. Train on collected games: `python3 ml/train.py`,
+then restart the server. Details: [ml/README.md](ml/README.md), deployment
+example: [ml/DEPLOYMENT.md](ml/DEPLOYMENT.md).
 
 ---
 
