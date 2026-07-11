@@ -11,7 +11,7 @@ main event.
 |---|---|---|---|---|
 | 1 | [Fog awareness](01-fog-awareness.md) | High — stops naive dives | Low | ✅ done |
 | 2 | [Team focus-fire](02-team-focus-fire.md) | High — coordinated kills | Medium | ✅ done |
-| 3 | [Farming efficiency](03-farming-efficiency.md) | High — natural GPM | Medium | implemented, pending in-game validation |
+| 3 | [Farming efficiency](03-farming-efficiency.md) | High — natural GPM | Medium | ✅ done |
 | 4 | [ML dataset features](04-ml-dataset-features.md) | Compounding | Low | planned |
 | 5 | [Natural economy](05-natural-economy.md) | The end goal | Low | blocked by 1–3 |
 
