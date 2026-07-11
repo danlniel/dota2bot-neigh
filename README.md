@@ -86,7 +86,8 @@ data you can train on (`python3 ml/train.py`).
 * Always-on (Docker, works on ARM boards like OrangePi):
   `cd ml && docker compose up -d --build`
 * Pointing at a shared server: set `Customize.ML.Server` (and `Api_Key` if the
-  host requires one).
+  host requires one). A hosted instance runs at `https://dota.sunarjodaniel.xyz`
+  (check `/health`; ask the maintainer for an API key).
 
 Details: [ml/README.md](ml/README.md).
 

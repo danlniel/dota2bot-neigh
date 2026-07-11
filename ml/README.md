@@ -63,6 +63,17 @@ To retrain on the server: `docker exec dota2bot-ml python3 train.py`
 Note: requests carry no player identity — the dataset is anonymous game
 snapshots. If many people share one server, all their games feed one model.
 
+## Endpoints
+
+| Route | Method | Auth | Purpose |
+|---|---|---|---|
+| `/policy` | POST | key | bots VM → FightIQ overrides (`Commit_Margin`, …) |
+| `/director` | POST | key | FretBots VM → difficulty nudge |
+| `/health` | GET | none | uptime check; shows `heuristic` vs `trained` model |
+
+Auth: `Authorization: <key>` header, or `"api_key"` in the JSON body (the
+bots VM client cannot set headers). Wrong key → 401.
+
 ## What the model controls today
 
 - **`/policy` → FightIQ**: currently `Commit_Margin` — how much power advantage
