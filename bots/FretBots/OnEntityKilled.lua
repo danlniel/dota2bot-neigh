@@ -186,12 +186,17 @@ function EntityKilled:GoldTracking()
 				local goldToReduce = Utilities:Clamp(math.floor(netWorthDiffAfterReduction - netWorthDiff), GoldPenaltyAmountMax, GoldPenaltyAmountMin)
 				Debug:Print('GoldTracking. Player: '.. player.stats.name .. ', team: ' .. player.stats.team .. ', gold to reduce: ' .. goldToReduce)
 
-				player.stats.pColor = player.stats.pColor or Utilities:GetPlayerColor(player.stats.id)
-				player.stats.pName = player.stats.pName or PlayerResource:GetPlayerName(player:GetPlayerID())
-				killerAwardAnnounce = killerAwardAnnounce .. '. ' .. Utilities:ColorString(player.stats.pName .. ': ' .. tostring(goldToReduce), player.stats.pColor)
-				player:ModifyGold(goldToReduce, true, DOTA_ModifyGold_HeroKill)
-				if player.stats.team == RADIANT then canClearRadiantTracking = true end
-				if player.stats.team == DIRE then canClearDireTracking = true end
+				-- only act when there is an actual penalty; with the penalty
+				-- constants zeroed this would otherwise ModifyGold(0) and spam
+				-- a "Player: 0" penalty message on every qualifying kill
+				if goldToReduce < 0 then
+					player.stats.pColor = player.stats.pColor or Utilities:GetPlayerColor(player.stats.id)
+					player.stats.pName = player.stats.pName or PlayerResource:GetPlayerName(player:GetPlayerID())
+					killerAwardAnnounce = killerAwardAnnounce .. '. ' .. Utilities:ColorString(player.stats.pName .. ': ' .. tostring(goldToReduce), player.stats.pColor)
+					player:ModifyGold(goldToReduce, true, DOTA_ModifyGold_HeroKill)
+					if player.stats.team == RADIANT then canClearRadiantTracking = true end
+					if player.stats.team == DIRE then canClearDireTracking = true end
+				end
 			elseif not Settings.allowPlayersToCheat and (player.stats.repurcussionTarget > 0 and player.stats.repurcussionCount < player.stats.repurcussionTarget) then
 				local goldToReduce = -math.floor(netWorthDiff)
 				Debug:Print('GoldTracking. Player: '.. player.stats.name .. ' received gold without a kill. gold to reduce: ' .. goldToReduce)

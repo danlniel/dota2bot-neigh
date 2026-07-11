@@ -460,7 +460,12 @@ function BonusTimers:GameStartBonus()
 		end
 	end
 	if Settings.difficulty >= 5 and Settings.deathBonus.maxAwards <= 2 then
-		Settings.deathBonus.maxAwards = 2 + Utilities:Clamp(Settings.difficulty / 3, 1, 3)
+		-- never exceed the number of configured award types, otherwise the
+		-- per-death cap stops binding (e.g. order trimmed to 3 types at
+		-- difficulty 10 would compute maxAwards = 5 and award all types every death)
+		Settings.deathBonus.maxAwards = math.min(
+			2 + Utilities:Clamp(Settings.difficulty / 3, 1, 3),
+			#Settings.deathBonus.order)
 	end
 
 	-- Gold

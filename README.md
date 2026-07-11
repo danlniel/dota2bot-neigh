@@ -41,10 +41,54 @@ Thanks and kudos to everyone who contributed to making bot games fun and excitin
 
 ---
 
-## How to Install for Enhance mode
+## How to Install (this fork)
+
+This fork adds smarter fight logic (`Customize.FightIQ`) and an optional ML
+model server (`ml/`) on top of OpenHyperAI. Because of those changes you need a
+**manual install** (the upstream Workshop item won't have them).
+
+### 1. Install the bot scripts
+
+1. Find your Dota 2 vscripts folder:
+   * Windows: `<Steam>\steamapps\common\dota 2 beta\game\dota\scripts\vscripts`
+   * Linux: `~/.steam/steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts`
+   * macOS: `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts`
+2. Copy this repo's [`bots/`](bots/) folder there, so you end up with
+   `.../vscripts/bots/hero_selection.lua` etc.
+   ```
+   git clone https://github.com/danlniel/dota2bot-neigh.git
+   cp -r dota2bot-neigh/bots "<vscripts folder>/bots"
+   ```
+3. To keep your settings safe from future updates, also copy `bots/Customize`
+   to `.../vscripts/game/Customize` (see the folder layout in
+   [Contribute](#contribute)).
+
+This manual install is also what enables **Fretbots mode** (dynamic
+difficulty, neutral items, chatbot). Upstream reference:
+[install instructions](https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68).
+
+### 2. Play
 
 1. Create a **Custom Lobby** → select **Local Host** as **Server Location**.
-2. To enable **Fretbots mode** (harder bots, neutral items, chatbot, etc.), you must **manually install** the script: [Instructions here](https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68).
+2. Fill bot slots and start — bot names ending with **“.OHA”** confirm the
+   script is loaded.
+3. Tune behavior in [`Customize/general.lua`](bots/Customize/general.lua):
+   difficulty (`Customize.Fretbots`), fight intelligence (`Customize.FightIQ`),
+   reaction speed (`Customize.ThinkLess`), ML bridge (`Customize.ML`).
+
+### 3. (Optional) ML model server
+
+Bots work fine without it. With it, an external policy tunes fight behavior
+live, difficulty adapts to keep games close, and every game collects training
+data you can train on (`python3 ml/train.py`).
+
+* Locally: `python3 ml/server.py` before creating the lobby.
+* Always-on (Docker, works on ARM boards like OrangePi):
+  `cd ml && docker compose up -d --build`
+* Pointing at a shared server: set `Customize.ML.Server` (and `Api_Key` if the
+  host requires one).
+
+Details: [ml/README.md](ml/README.md).
 
 ---
 
