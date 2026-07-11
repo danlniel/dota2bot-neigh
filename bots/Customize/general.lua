@@ -156,6 +156,13 @@ Customize.FightIQ = {
     -- Focus fire: prefer targets that allies are already attacking, that are disabled,
     -- and judge "weakest" by armor-adjusted effective HP instead of raw HP.
     Focus_Fire = true,
+
+    -- Fog awareness: alive-but-unseen enemies whose last known position is close
+    -- count toward enemy power, so bots stop diving into fog (missing = danger).
+    Fog_Awareness = true,
+    Fog_Recent_Seconds = 10,   -- full threat weight if seen this recently
+    Fog_Decay_Seconds = 25,    -- no weight beyond this many seconds unseen
+    Fog_Near_Distance = 3000,  -- last-seen distance (to the bot) that counts
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).

@@ -4724,6 +4724,43 @@ local function GetFightReadinessMul(unit, bIsEnemy)
 	return mul
 end
 
+-- Fog awareness: alive-but-unseen enemies whose last known position is close
+-- still threaten the fight. Returns extra enemy power ("pressure") so bots
+-- stop evaluating a 2v1 as won when three unseen enemies are one smoke away.
+-- Per-enemy power is proxied by the average visible enemy's power (or our own
+-- team's average when no enemy is visible), decayed by time since last seen.
+local function GetMissingEnemyFogPressure(bot, tSeenIds, nVisibleEnemies, enemyPower, ourPowerRaw, nAllyCount, iq)
+	local nRecent = iq.Fog_Recent_Seconds or 10
+	local nDecay = iq.Fog_Decay_Seconds or 25
+	local nNearDist = iq.Fog_Near_Distance or 3000
+
+	local fPerEnemy
+	if nVisibleEnemies > 0 and enemyPower > 0 then
+		fPerEnemy = enemyPower / nVisibleEnemies
+	else
+		fPerEnemy = ourPowerRaw / Max(1, nAllyCount)
+	end
+
+	local fPressure = 0
+	for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+		if not tSeenIds[id] and IsHeroAlive(id) then
+			local info = GetHeroLastSeenInfo(id)
+			local dInfo = info ~= nil and info[1] or nil
+			if dInfo ~= nil
+			and dInfo.location ~= nil
+			and dInfo.time_since_seen ~= nil
+			and dInfo.time_since_seen <= nDecay
+			and GetUnitToLocationDistance(bot, dInfo.location) <= nNearDist
+			then
+				local fWeight = RemapValClamped(dInfo.time_since_seen, nRecent, nDecay, 1, 0)
+				fPressure = fPressure + fPerEnemy * fWeight
+			end
+		end
+	end
+
+	return fPressure
+end
+
 function J.WeAreStronger(bot, nRadius)
 	local cacheKey = 'WeAreStronger'..tostring(bot:GetPlayerID())..'-'..tostring(nRadius)
 	local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.5)
@@ -4735,6 +4772,7 @@ function J.WeAreStronger(bot, nRadius)
 	local ourPowerRaw = 0
 	local enemyPower = 0
 	local botHealthRegen =  bot:GetHealthRegen() * 2.0
+	local tSeenEnemyPlayerIds = {}
 
 	for _, unit in pairs(GetUnitList(UNIT_LIST_ALL)) do
 		if J.IsValidHero(unit)
@@ -4786,6 +4824,7 @@ function J.WeAreStronger(bot, nRadius)
 					and not unit:HasModifier('modifier_item_helm_of_the_undying_active')
 					then
 						table.insert(tEnemyHeroes, unit)
+						tSeenEnemyPlayerIds[unit:GetPlayerID()] = true
 					end
 					enemyPower = enemyPower + (math.log(1 + unit:GetRawOffensivePower())) * (math.sqrt(Max(0, unit:GetAttackDamage() * unit:GetAttackSpeed() * 5))) * fMul * GetFightReadinessMul(unit, true)
 				end
@@ -4815,6 +4854,16 @@ function J.WeAreStronger(bot, nRadius)
 	end
 
 	local iq = GetFightIQ()
+
+	-- fog awareness: nearby unseen enemies count toward enemy power
+	if iq ~= nil and iq.Fog_Awareness ~= false then
+		local ok, fFogPressure = pcall(GetMissingEnemyFogPressure,
+			bot, tSeenEnemyPlayerIds, #tEnemyHeroes, enemyPower, ourPowerRaw, #tAllyHeroes, iq)
+		if ok and type(fFogPressure) == 'number' then
+			enemyPower = enemyPower + fFogPressure
+		end
+	end
+
 	local fCommitMargin = (iq and iq.Commit_Margin) or 1.0
 	local res = ourPowerRaw > enemyPower * fCommitMargin
 	J.Utils.SetCachedVars(cacheKey, res)
