@@ -77,7 +77,7 @@ sRoleItemsBuyList['pos_4'] = {
     "item_blood_grenade",
 
     "item_boots",
-    "item_urn_of_shadows",
+    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
     "item_arcane_boots",
     "item_glimmer_cape",--
     "item_spirit_vessel",--
@@ -134,6 +134,7 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
+-- Ability handles (re-fetched each tick in SkillsComplement for safety)
 local Illuminate    = bot:GetAbilityByName('keeper_of_the_light_illuminate')
 local IlluminateEnd = bot:GetAbilityByName('keeper_of_the_light_illuminate_end')
 local BlindingLight = bot:GetAbilityByName('keeper_of_the_light_blinding_light')
@@ -156,13 +157,26 @@ local IlluminateCastedTime = -100
 
 local nAllyHeroes, nEnemyHeroes
 local botTarget
+local botHP
 
 function X.SkillsComplement()
     if J.CanNotUseAbility(bot) then return end
 
+    -- Re-fetch ability handles each tick for safety
+    Illuminate    = bot:GetAbilityByName('keeper_of_the_light_illuminate')
+    IlluminateEnd = bot:GetAbilityByName('keeper_of_the_light_illuminate_end')
+    BlindingLight = bot:GetAbilityByName('keeper_of_the_light_blinding_light')
+    ChakraMagic   = bot:GetAbilityByName('keeper_of_the_light_chakra_magic')
+    SolarBind     = bot:GetAbilityByName('keeper_of_the_light_radiant_bind')
+    Recall        = bot:GetAbilityByName('keeper_of_the_light_recall')
+    WillOWisp     = bot:GetAbilityByName('keeper_of_the_light_will_o_wisp')
+    SpiritForm    = bot:GetAbilityByName('keeper_of_the_light_spirit_form')
+
+    -- Cache per-tick variables
     nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
     nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
     botTarget = J.GetProperTarget(bot)
+    botHP = J.GetHP(bot)
 
     SpiritFormDesire = X.ConsiderSpiritForm()
     if SpiritFormDesire > 0
@@ -192,18 +206,20 @@ function X.SkillsComplement()
         return
     end
 
+    -- Check IlluminateEnd BEFORE Illuminate so we release a channel for a kill/optimal damage
+    -- before considering whether to start a new one
+    IlluminateEndDesire = X.ConsiderIlluminateEnd()
+    if IlluminateEndDesire > 0
+    then
+        bot:Action_UseAbility(IlluminateEnd)
+        return
+    end
+
     IlluminateDesire, IlluminateLocation = X.ConsiderIlluminate()
     if IlluminateDesire > 0
     then
         bot:Action_UseAbilityOnLocation(Illuminate, IlluminateLocation)
         IlluminateCastedTime = DotaTime()
-        return
-    end
-
-    IlluminateEndDesire = X.ConsiderIlluminateEnd()
-    if IlluminateEndDesire > 0
-    then
-        bot:Action_UseAbility(IlluminateEnd)
         return
     end
 
@@ -396,7 +412,9 @@ function X.ConsiderBlindingLight()
 	local nCastPoint = BlindingLight:GetCastPoint()
     local nDamage = BlindingLight:GetSpecialValueInt('damage')
     local nRadius = BlindingLight:GetSpecialValueInt('radius')
+    local nBlindingLightLevel = BlindingLight:GetLevel()
 
+    -- Kill secure: finish off low-HP enemies
     for _, enemyHero in pairs(nEnemyHeroes)
     do
         if  J.IsValidHero(enemyHero)
@@ -421,6 +439,7 @@ function X.ConsiderBlindingLight()
         end
     end
 
+    -- Offensive: push enemy TOWARD your team when going on someone
 	if J.IsGoingOnSomeone(bot)
 	then
 		if  J.IsValidTarget(botTarget)
@@ -432,11 +451,14 @@ function X.ConsiderBlindingLight()
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
 		then
             if J.IsChasingTarget(bot, botTarget) then
-                return BOT_ACTION_DESIRE_HIGH, botTarget:GetExtrapolatedLocation(nCastPoint * 2)
+                -- Place the light behind the target so the push goes toward us
+                local vPushOrigin = J.VectorAway(botTarget:GetLocation(), bot:GetLocation(), nCastRange * 0.5)
+                return BOT_ACTION_DESIRE_HIGH, vPushOrigin
             end
 		end
 	end
 
+    -- Self-defense: push enemies away when retreating
 	if J.IsRetreating(bot) and not J.IsRealInvisible(bot) and not J.CanCastAbility(SolarBind)
     and bot:WasRecentlyDamagedByAnyHero(3.0)
 	then
@@ -452,6 +474,7 @@ function X.ConsiderBlindingLight()
         end
 	end
 
+    -- Ally protection: push enemy away from retreating ally
     for _, allyHero in pairs(nAllyHeroes)
     do
         if  J.IsValidHero(allyHero)
@@ -468,7 +491,20 @@ function X.ConsiderBlindingLight()
             and not nAllyInRangeEnemy[1]:HasModifier('modifier_legion_commander_duel')
             and not nAllyInRangeEnemy[1]:HasModifier('modifier_necrolyte_reapers_scythe')
             then
-                return BOT_ACTION_DESIRE_HIGH, (allyHero:GetLocation() + nAllyInRangeEnemy[1]:GetLocation()) / 2
+                -- Place behind the enemy relative to the ally, so push goes away from ally
+                local vPushOrigin = J.VectorAway(nAllyInRangeEnemy[1]:GetLocation(), allyHero:GetLocation(), nRadius * 0.4)
+                return BOT_ACTION_DESIRE_HIGH, vPushOrigin
+            end
+        end
+    end
+
+    -- Creep clearing: use Blinding Light on 4+ lane creeps when pushing/defending (level 3+)
+    if nBlindingLightLevel >= 3 and (J.IsPushing(bot) or J.IsDefending(bot)) then
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+        if #nEnemyLaneCreeps >= 4 then
+            local nLocationAoE = bot:FindAoELocation(true, false, bot:GetLocation(), nCastRange, nRadius, 0, 0)
+            if nLocationAoE.count >= 4 then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
             end
         end
     end
@@ -522,6 +558,7 @@ function X.ConsiderSolarBind()
         and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
         and not botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+        and not botTarget:HasModifier('modifier_keeper_of_the_light_radiant_bind')
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget
 		end
@@ -539,6 +576,7 @@ function X.ConsiderSolarBind()
             and J.CanCastOnTargetAdvanced(enemy)
             and J.IsChasingTarget(enemy, bot)
             and not J.IsDisabled(enemy)
+            and not enemy:HasModifier('modifier_keeper_of_the_light_radiant_bind')
             then
                 return BOT_ACTION_DESIRE_HIGH, enemy
             end
@@ -559,6 +597,7 @@ function X.ConsiderSolarBind()
                 and not J.IsSuspiciousIllusion(nAllyInRangeEnemy[1])
                 and not J.IsDisabled(nAllyInRangeEnemy[1])
                 and not nAllyInRangeEnemy[1]:HasModifier('modifier_necrolyte_reapers_scythe')
+                and not nAllyInRangeEnemy[1]:HasModifier('modifier_keeper_of_the_light_radiant_bind')
                 then
                     return BOT_ACTION_DESIRE_HIGH, nAllyInRangeEnemy[1]
                 end
@@ -598,7 +637,26 @@ function X.ConsiderWillOWisp()
 
 	local nCastRange = J.GetProperCastRange(false, bot, WillOWisp:GetCastRange())
     local nRadius = WillOWisp:GetSpecialValueInt('radius')
+    local nCastPoint = WillOWisp:GetCastPoint()
+    local nDuration = WillOWisp:GetSpecialValueInt('duration')
 
+    -- TP-cancel: catch enemies channeling a TP if Wisp can lock them down in time
+    for _, enemyHero in pairs(nEnemyHeroes) do
+        if  J.IsValidHero(enemyHero)
+        and J.IsInRange(bot, enemyHero, nCastRange)
+        and J.CanCastOnNonMagicImmune(enemyHero)
+        and enemyHero:HasModifier('modifier_teleporting')
+        then
+            local fTPRemaining = J.GetModifierTime(enemyHero, 'modifier_teleporting')
+            -- We need the cast point to be less than the remaining TP time,
+            -- and Wisp duration must be enough to actually interrupt
+            if fTPRemaining > nCastPoint and nDuration > 0.5 then
+                return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+            end
+        end
+    end
+
+    -- Teamfight: place Wisp on 2+ enemies (at least one core)
 	if J.IsInTeamFight(bot, 1200)
 	then
         local nLocationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, nRadius, 0, 0)
@@ -622,13 +680,17 @@ function X.ConsiderSpiritForm()
 		if  J.IsValidTarget(botTarget)
         and J.CanBeAttacked(botTarget)
         and J.IsInRange(bot, botTarget, 1200)
-        and J.WeAreStronger(bot, 1600)
         and not J.IsSuspiciousIllusion(botTarget)
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
         and not botTarget:HasModifier('modifier_troll_warlord_battle_trance')
         and not botTarget:HasModifier('modifier_ursa_enrage')
 		then
-			return BOT_ACTION_DESIRE_HIGH
+            -- Transform when we are stronger OR when we can secure the kill
+            if J.WeAreStronger(bot, 1600)
+            or bot:GetEstimatedDamageToTarget(true, botTarget, 10.0, DAMAGE_TYPE_ALL) > botTarget:GetHealth()
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
 		end
 	end
 
@@ -640,17 +702,23 @@ function X.ConsiderRecall()
         return BOT_ACTION_DESIRE_NONE, nil
     end
 
+    -- Use actual teleport delay from ability data instead of hardcoded value
+    local nTeleportDelay = Recall:GetSpecialValueInt('teleport_delay')
+    if nTeleportDelay == nil or nTeleportDelay == 0 then nTeleportDelay = 3 end
+
     for _, allyHero in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES)) do
         if J.IsValidHero(allyHero) and not allyHero:IsIllusion() and not J.IsMeepoClone(allyHero) then
             local bEnemyNearby = J.IsEnemyHeroAroundLocation(allyHero:GetLocation(), 1600)
             local nAllyInRangeEnemy = J.GetEnemiesNearLoc(allyHero:GetLocation(), 1600)
 
             if not bEnemyNearby then
+                -- Recall low-HP retreating allies to safety (check damage window = teleport delay)
                 if  J.IsRetreating(allyHero)
                 and J.GetHP(allyHero) < 0.25
                 and #nAllyInRangeEnemy == 0
                 and allyHero:DistanceFromFountain() > 4500
                 and bot:DistanceFromFountain() < 1600
+                and not allyHero:WasRecentlyDamagedByAnyHero(nTeleportDelay)
                 then
                     return BOT_ACTION_DESIRE_HIGH, allyHero
                 end

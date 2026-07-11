@@ -1,4 +1,14 @@
 
+-- macOS compatibility: Valve's VScript on Mac resolves require() paths differently.
+-- Extend package.path to include the script directory so both path styles work.
+if package and package.path then
+	local scriptPath = GetScriptDirectory()
+	if not string.find(package.path, scriptPath, 1, true) then
+		package.path = package.path .. ";" .. scriptPath .. "/?.lua"
+		package.path = package.path .. ";" .. scriptPath .. "/?/init.lua"
+	end
+end
+
 local Utils = require( GetScriptDirectory()..'/FunLib/utils')
 
 -- Override this func for the script to use

@@ -44,7 +44,6 @@ sRoleItemsBuyList['pos_2'] = {
     "item_ultimate_scepter_2",
     "item_shivas_guard",
     "item_travel_boots_2",--
-    "item_ethereal_blade",--
     "item_wind_waker",--
     "item_moon_shard",
 }
@@ -68,7 +67,6 @@ sRoleItemsBuyList['pos_5'] = {
     "item_ultimate_scepter",
     "item_octarine_core",--
     -- "item_cyclone",
-    "item_ethereal_blade",--
     -- "item_wind_waker",--
     "item_arcane_blink",--
     "item_ultimate_scepter_2",
@@ -95,7 +93,6 @@ sRoleItemsBuyList['pos_4'] = {
     "item_ultimate_scepter",
     "item_octarine_core",--
     "item_cyclone",
-    "item_ethereal_blade",--
     -- "item_wind_waker",--
     "item_arcane_blink",--
     "item_ultimate_scepter_2",
@@ -118,7 +115,6 @@ sRoleItemsBuyList['pos_1'] = {
     "item_ultimate_scepter_2",
     "item_shivas_guard",
     "item_travel_boots_2",--
-    "item_ethereal_blade",--
     "item_wind_waker",--
     "item_moon_shard",
 }
@@ -134,7 +130,7 @@ sRoleItemsBuyList['pos_3'] = {
     "item_magic_wand",
     "item_phase_boots",
     "item_veil_of_discord",
-    "item_eternal_shroud",--
+    "item_glimmer_cape",--
     "item_ultimate_scepter",
     "item_blink",
     "item_shivas_guard",--

@@ -50,7 +50,7 @@ local isAllPlayersSpawned = false
 local isDataTablesInitialized = false
 local isFretbotsBeingInitialized = false
 local playerSpawnCount = 0
-local playerLoadFailSafeDelta = 3
+local playerLoadFailSafeDelta = 15  -- 15 retries (~15 seconds) to find all heroes
 
 -- Starting this script is largely handled by the requires, as separate pieces start
 -- themselves. DataTables cannot be initialized until all players have loaded, so
@@ -81,8 +81,14 @@ function FretBots:PlayersLoadedTimer()
 	-- if all players are loaded, initialize datatables and stop timer
 	if isAllPlayersSpawned then
 		if not isDataTablesInitialized then
-			DataTables:Initialize()
-			isDataTablesInitialized = true
+			local ok, err = pcall(DataTables.Initialize, DataTables)
+			if ok then
+				isDataTablesInitialized = true
+			else
+				print('[FretBots] DataTables:Initialize FAILED: '..tostring(err))
+				print('[FretBots] Retrying next tick...')
+				return 1
+			end
 		end
 		if not Flags.isSettingsFinalized then
 			Debug:Print('Settings not finalized yet! Waiting.')
@@ -115,10 +121,43 @@ function FretBots:OnPlayerSpawned(event)
 end
 
 function FretBots:CheckBots()
-	playerLoadFailSafeDelta = playerLoadFailSafeDelta - 1
-	if playerLoadFailSafeDelta <= 0 then
-		Debug:Print('All bots should be ready in game as most were ready a while ago.  Proceeding.')
+	-- Count players with assigned heroes
+	local nReady = 0
+	for nTeam = DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS do
+		local pNum = PlayerResource:GetPlayerCountForTeam(nTeam)
+		for i = 0, pNum - 1 do
+			local playerID = PlayerResource:GetNthPlayerIDOnTeam(nTeam, i)
+			if playerID and playerID >= 0 then
+				local player = PlayerResource:GetPlayer(playerID)
+				if player and player:GetAssignedHero() then
+					nReady = nReady + 1
+				end
+			end
+		end
+	end
+
+	-- A standard 5v5 game has 10 players. With humans, GetPlayer/GetAssignedHero
+	-- may not work for human slots from the server side. Accept 8+ as ready
+	-- (at least 8 bots in a game with 1-2 humans is normal).
+	local MIN_READY = 8
+	if nReady >= MIN_READY then
+		Debug:Print('Found '..nReady..' heroes ready (>= '..MIN_READY..'). Proceeding.')
 		isAllPlayersSpawned = true
+	else
+		playerLoadFailSafeDelta = playerLoadFailSafeDelta - 1
+		if playerLoadFailSafeDelta <= 0 then
+			if nReady >= 4 then
+				-- At least 4 heroes found — enough to start
+				Debug:Print('Failsafe: '..nReady..' heroes found. Proceeding.')
+				isAllPlayersSpawned = true
+			else
+				-- Reset and keep trying — something is seriously wrong
+				Debug:Print('Only '..nReady..' heroes found. Resetting failsafe.')
+				playerLoadFailSafeDelta = 5
+			end
+		else
+			Debug:Print('Waiting for heroes: '..nReady..' ready, retries left: '..playerLoadFailSafeDelta)
+		end
 	end
 end
 

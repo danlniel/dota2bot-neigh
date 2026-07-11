@@ -38,6 +38,8 @@ local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
 local HeroPositionMap = require( GetScriptDirectory()..'/FunLib/aba_hero_pos_weights' )
 local heroUnitNames = require( GetScriptDirectory()..'/FretBots/HeroNames')
 local Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
+local okMatchupLib, HeroMatchups = pcall(require, GetScriptDirectory()..'/FunLib/aba_matchups')
+if not okMatchupLib then HeroMatchups = nil end
 HeroPositionMap = HeroPositionMap.GetHeroPositions()
 
 if GAMEMODE_TURBO == nil then GAMEMODE_TURBO = 23 end
@@ -125,6 +127,7 @@ local WeakHeroes = {
 	'npc_dota_hero_ember_spirit',
 	'npc_dota_hero_rubick',
 	'npc_dota_hero_brewmaster',
+	'npc_dota_hero_puck',
 
 	-- Buggys (as of 2024/8/1):
     'npc_dota_hero_marci',
@@ -558,6 +561,15 @@ local function GetEnemyHeroNames()
     return enemies
 end
 
+local function GetAllyHeroNames()
+    local allies = {}
+    for _, id in pairs(GetTeamPlayers(GetTeam())) do
+        local h = GetSelectedHeroName(id)
+        if h ~= nil and h ~= '' then table.insert(allies, h) end
+    end
+    return allies
+end
+
 --==============================================================================
 -- Draft core (AllPick)
 --==============================================================================
@@ -582,25 +594,53 @@ local function TeamOfPlayer(id)
 	return GetTeamForPlayer(id) -- returns TEAM_RADIANT/TEAM_DIRE for that player
 end
 
-local function ScoreCandidatesForTeam(team, rolePool, enemyNames)
-	-- Build scored list among pickable heroes only
+local function ScoreCandidatesForTeam(team, rolePool, enemyNames, posIndex)
 	local list = {}
 	local weakPenalty = WeakPenaltyFactor(team)
+	local allyNames = GetAllyHeroNames()
 
 	for _, cand in ipairs(rolePool) do
 		if X.CanPickHero(team, cand) then
 			local score = 0
-			-- Sum counter advantages (negate enemy advantage)
+
+			-- 1. Counter-pick score: negate enemy advantage, with sqrt dampening
+			-- sqrt prevents one extreme matchup from dominating
 			if matchups[cand] then
 				for _, e in ipairs(enemyNames) do
 					local adv = matchups[cand][e]
 					if adv ~= nil then
-						score = score + (-1 * adv)
+						local counterScore = -1 * adv
+						-- Sqrt dampening: preserves sign, reduces magnitude
+						if counterScore >= 0 then
+							score = score + math.sqrt(counterScore)
+						else
+							score = score - math.sqrt(math.abs(counterScore))
+						end
 					end
 				end
 			end
 
-			-- Penalize weak heroes multiplicatively (soft), in addition to hard cap
+			-- 2. Synergy bonus: reward heroes that synergize with already-picked allies
+			if HeroMatchups and #allyNames > 0 then
+				for _, ally in ipairs(allyNames) do
+					if ally ~= cand then
+						if HeroMatchups.IsSynergy and HeroMatchups.IsSynergy(cand, ally) then
+							score = score + 1.5  -- bonus for synergy match
+						end
+						if HeroMatchups.IsCounter and HeroMatchups.IsCounter(ally, cand) then
+							score = score - 0.5  -- small penalty if ally is countered by us (bad pairing)
+						end
+					end
+				end
+			end
+
+			-- 3. Role weight multiplier: heroes that fit the position better score higher
+			if posIndex and HeroPositionMap[cand] then
+				local posWeight = HeroPositionMap[cand][posIndex] or 50
+				score = score * (posWeight / 100)
+			end
+
+			-- 4. Weak hero penalty
 			if Utils.HasValue(WeakHeroes, cand) then
 				score = score * weakPenalty
 			end
@@ -614,20 +654,21 @@ local function ScoreCandidatesForTeam(team, rolePool, enemyNames)
 end
 
 local function SelectTopWithFuzz(scored)
-	-- Keep only top 3 and roll among them 50/25/25
-	while #scored > 3 do table.remove(scored) end
+	-- Keep top 5 candidates, weighted random selection
+	-- 35% / 25% / 20% / 12% / 8% — favors counters but adds variety
+	while #scored > 5 do table.remove(scored) end
 	if #scored == 0 then return nil end
 
-	local roll = RandomInt(0, 100) / 100.0
-	if roll <= 0.50 then
-		return scored[1].name
-	elseif roll <= 0.75 and scored[2] then
-		return scored[2].name
-	elseif scored[3] then
-		return scored[3].name
-	else
-		return scored[1].name
+	local weights = {35, 25, 20, 12, 8}
+	local roll = RandomInt(1, 100)
+	local cumulative = 0
+	for i, w in ipairs(weights) do
+		cumulative = cumulative + w
+		if roll <= cumulative and scored[i] then
+			return scored[i].name
+		end
 	end
+	return scored[1].name
 end
 
 local function PickHeroForBotSlot(i, id)
@@ -641,11 +682,11 @@ local function PickHeroForBotSlot(i, id)
 	-- Use matchup data most of the time unless user forced picks
 	if not X.IsInCustomizedPicks(preselect) and RandomInt(1, 5) >= 1 then
 		local enemyNames = GetEnemyHeroNames()
-		local scored = ScoreCandidatesForTeam(team, rolePool, enemyNames)
+		local scored = ScoreCandidatesForTeam(team, rolePool, enemyNames, i)
 
 		local teamName = (team == TEAM_RADIANT and 'Radiant' or 'Dire')
-		print('==== top 3 heroes for team: '..teamName..' slot: '..i..' id: '..id..' ====')
-		for k = 1, math.min(3, #scored) do
+		print('==== top 5 heroes for team: '..teamName..' pos: '..i..' id: '..id..' ====')
+		for k = 1, math.min(5, #scored) do
 			print(k, scored[k].score, scored[k].name)
 		end
 
@@ -874,7 +915,7 @@ local function InitPickScheduleOnce()
 	end
 
 	-- Tweak these three to taste:
-	local base  = GameTime() + 2          -- when the *first* bot may pick
+	local base  = GameTime() + 3          -- when the *first* bot may pick
 	local step  = GetTeam() * 3           -- spacing between slots
 	local jitter_min, jitter_max = 1, 3   -- small variability per slot
 

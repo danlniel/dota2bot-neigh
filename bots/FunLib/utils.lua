@@ -814,7 +814,7 @@ ____exports.ImportantSpells = {
     [HeroName.Razor] = {"razor_static_link"},
     [HeroName.ShadowFiend] = {"nevermore_requiem"},
     [HeroName.Slark] = {"slark_shadow_dance"},
-    [HeroName.Spectre] = {"spectre_haunt_single", "spectre_haunt"},
+    [HeroName.Spectre] = {"spectre_shadow_step", "spectre_haunt"},
     [HeroName.Terrorblade] = {"terrorblade_metamorphosis", "terrorblade_sunder"},
     [HeroName.TrollWarlord] = {"troll_warlord_battle_trance"},
     [HeroName.Ursa] = {"ursa_enrage"},
@@ -1072,18 +1072,7 @@ function ____exports.GetCachedVars(key, withinTime)
     return nil
 end
 function ____exports.CleanupCachedVars()
-    if not ____exports.GameStates.cachedVars then
-        return
-    end
-    for key in pairs(____exports.GameStates.cachedVars) do
-        if __TS__StringEndsWith(key, "-Time") then
-            local originalKey = string.sub(key, 1, -6)
-            if DotaTime() - ____exports.GameStates.cachedVars[key] > ____exports.CachedVarsCleanTime then
-                __TS__Delete(____exports.GameStates.cachedVars, originalKey)
-                __TS__Delete(____exports.GameStates.cachedVars, key)
-            end
-        end
-    end
+    return
 end
 function ____exports.CountEnemyHeroesNear(loc, r)
     local n = 0
@@ -1266,7 +1255,7 @@ function ____exports.GetNearbyAllyAverageHpPercent(bot, radius)
             cnt = cnt + 1
         end
     end
-    return cnt and sum / cnt or 0
+    return cnt ~= nil and sum / cnt or 0
 end
 function ____exports.IsWithoutSpellShield(npcEnemy)
     return not npcEnemy:HasModifier("modifier_item_sphere_target") and not npcEnemy:HasModifier("modifier_antimage_spell_shield") and not npcEnemy:HasModifier("modifier_item_lotus_orb_active")
@@ -1706,7 +1695,7 @@ function ____exports.IsTeamPushingSecondTierOrHighGround(bot)
         for ____, playerdId in ipairs(GetTeamPlayers(bot:GetTeam())) do
             if IsHeroAlive(playerdId) then
                 local teamMember = GetTeamMember(playerdId)
-                if teamMember ~= nil and #teamMember:GetNearbyHeroes(2000, false, BotMode.None) > 2 and (____exports.IsNearEnemySecondTierTower(teamMember, 2000) or ____exports.IsNearEnemyHighGroundTower(teamMember, 3000) or GetUnitToUnitDistance(teamMember, enemyAncient) < 3000) then
+                if teamMember ~= nil and #teamMember:GetNearbyHeroes(2000, false, BotMode.None) >= 2 and (____exports.IsNearEnemySecondTierTower(teamMember, 2000) or ____exports.IsNearEnemyHighGroundTower(teamMember, 3000) or GetUnitToUnitDistance(teamMember, enemyAncient) < 3000) then
                     ____exports.SetCachedVars(cacheKey, true)
                     return true
                 end

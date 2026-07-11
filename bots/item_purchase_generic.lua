@@ -2,6 +2,7 @@ local bot = GetBot()
 local botName = bot:GetUnitName()
 if bot == nil or bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 
+if GAMEMODE_ARDM == nil then GAMEMODE_ARDM = 20 end
 local Item = require( GetScriptDirectory()..'/FunLib/aba_item' )
 local Role = require( GetScriptDirectory()..'/FunLib/aba_role' )
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
@@ -25,13 +26,17 @@ bot.currBuyingItemInPurchaseList = nil
 bot.currBuyingBasicItem = nil
 bot.currBuyingBasicItemList = {}
 bot.currBuyingBasicItemRefList = {}
+
+-- track required counts of components to avoid overbuying and to allow re-buying only when missing
+bot.currBuyingRequiredCounts = nil         -- map[item_name] = required_count for the current target item
+bot._lastPurchaseAttempt = { name = nil, t = -999 }
+
 bot.rebuildCount = 0
 bot.SecretShop = false
 
 local sPurchaseList = BotBuild['sBuyList']
 local sItemSellList = BotBuild['sSellList']
 
-bot.componentBuyGuard = bot.componentBuyGuard or {}  -- name -> last purchase time (sec)
 
 if sPurchaseList == nil then
 	print("[ERROR] Can't load purchase list for: " .. botName)
@@ -40,7 +45,7 @@ if sPurchaseList == nil then
 end
 
 for i = 1, #sPurchaseList
-do
+ do
 	bot.purchaseListInReverseOrder[i] = sPurchaseList[#sPurchaseList - i + 1]
 end
 
@@ -73,85 +78,90 @@ local initSmoke = false
 
 local currentTime, botLevel, botGold, botWorth, botMode, botHP, botCourierValue, botStashValue, botDistanceFromFountain
 
-local function CountItemEverywhere(unit, itemName)
-    local function countIn(invOwner)
-        local c = 0
-        for s = 0, 14 do
-            local it = invOwner:GetItemInSlot(s)
-            if it ~= nil and it:GetName() == itemName then
-                c = c + (it:GetCurrentCharges() > 0 and 1 or 1) -- components don't stack; keep 1
-            end
-        end
-        return c
-    end
-
-    local total = countIn(unit)
-
-    -- include courier if we can access it
-    local c = unit.theCourier
-    if c ~= nil then
-        -- Best-effort: some APIs hide courier slots; try typical 0..8
-        pcall(function()
-            for s = 0, 8 do
-                local it = c:GetItemInSlot(s)
-                if it ~= nil and it:GetName() == itemName then
-                    total = total + 1
-                end
-            end
-        end)
-    end
-
-    return total
+-- utilities for counting/need detection
+local function _countOwnedEverywhere(unit, itemName)
+	local count = 0
+	for slot = 0, 14 do
+		local it = unit:GetItemInSlot(slot)
+		if it ~= nil and it:GetName() == itemName then count = count + 1 end
+	end
+	-- we cannot reliably inspect courier bags here; use conservative logic elsewhere.
+	return count
 end
 
-local function BuildRequirementMapFor(itemName)
-    -- map of basic -> count needed for THIS composite
-    local t = {}
-    local basics = Item.GetBasicItems({ itemName })
-    for _, b in ipairs(basics) do
-        t[b] = (t[b] or 0) + 1
-    end
-    return t
+local function _buildRequiredCounts(list)
+	local m = {}
+	for _, n in ipairs(list) do
+		m[n] = (m[n] or 0) + 1
+	end
+	return m
 end
 
-local function TryRecoverDroppedNeeded(bot, neededSet)
-    -- Walk to and pick up owned dropped components if they’re nearby
-    local drops = GetDroppedItemList()
-    for _, d in pairs(drops) do
-        local it = d.item
-        if it ~= nil then
-            local name = it:GetName()
-            if neededSet[name] and d.owner == bot then
-                local dist = GetUnitToLocationDistance(bot, d.location)
-                if dist > 120 and dist < 1000 then
-                    bot:Action_MoveToLocation(d.location)
-                    return true
-                elseif dist <= 120 then
-                    bot:Action_PickUpItem(it)
-                    return true
-                end
-            end
-        end
-    end
-    return false
+-- Items that should never be re-bought in ARDM after hero swap
+-- (early game consumables / cheap items that waste gold mid-late game)
+local tARDMNeverRebuy = {
+	item_tango = true, item_double_tango = true, item_clarity = true,
+	item_faerie_fire = true, item_enchanted_mango = true, item_flask = true,
+	item_blood_grenade = true, item_branches = true, item_double_branches = true,
+	item_quelling_blade = true, item_magic_stick = true,
+	item_magic_wand = true, item_recipe_magic_wand = true,
+	item_infused_raindrop = true, item_orb_of_venom = true,
+	item_blight_stone = true, item_orb_of_frost = true,
+	item_gauntlets = true, item_slippers = true, item_mantle = true,
+	item_circlet = true, item_ring_of_protection = true,
+	item_bracer = true, item_wraith_band = true, item_null_talisman = true,
+	item_soul_ring = true,
+}
+
+local function _stillNeeds(itemName)
+	-- Don't buy a second pair of basic boots if we already have upgraded boots.
+	-- BUT allow buying item_boots when it's a COMPONENT of the current build target
+	-- (e.g., building power_treads needs item_boots as a component — don't skip it).
+	if itemName == 'item_boots' then
+		local currentTarget = bot.currBuyingItemInPurchaseList
+		-- Only skip if we have upgraded boots AND the current target is NOT a boots upgrade
+		-- (i.e., we're not building treads/arcane/tranquil/phase from basic boots)
+		local tBootsUpgrades = {
+			item_power_treads = true, item_phase_boots = true,
+			item_arcane_boots = true, item_tranquil_boots = true,
+			item_travel_boots = true, item_travel_boots_2 = true,
+			item_guardian_greaves = true, item_boots_of_bearing = true,
+		}
+		if Item.HasBootsInMainSolt(bot) and not tBootsUpgrades[currentTarget] then
+			return false
+		end
+	end
+	-- In ARDM after laning phase, skip early game items that shouldn't be re-bought
+	if GetGameMode() == GAMEMODE_ARDM and DotaTime() > 2 * 60 and tARDMNeverRebuy[itemName] then
+		return false
+	end
+	if not bot.currBuyingRequiredCounts then return true end
+	local required = bot.currBuyingRequiredCounts[itemName]
+	if not required then return true end
+	local have = _countOwnedEverywhere(bot, itemName)
+	return have < required
 end
 
--- For quick “is this basic still required for current target?” checks.
-local function NeedsMoreOf(bot, basicName)
-    if not bot.currReqMap then return true end
-    local need = bot.currReqMap[basicName]
-    if not need then return false end
-    local have = CountItemEverywhere(bot, basicName)
-    return have < need
+local function _popIfNoLongerNeeded()
+	while #bot.currBuyingBasicItemList > 0 do
+		local name = bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList]
+		if _stillNeeds(name) then
+			return name
+		else
+			-- drop this component from the queue; already satisfied (owned/picked earlier)
+			bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList] = nil
+		end
+	end
+	return nil
 end
 
-local function RecentlyBought(bot, basicName, window)
-    local t = DotaTime()
-    return bot.componentBuyGuard[basicName] and (t - bot.componentBuyGuard[basicName] < (window or 8))
-end
-
-local function MarkBought(bot, basicName)
-    bot.componentBuyGuard[basicName] = DotaTime()
+local function _antiSpamPurchase(name)
+	local t = DotaTime()
+	if bot._lastPurchaseAttempt.name == name and t - bot._lastPurchaseAttempt.t < 0.4 then
+		return true -- skip this frame
+	end
+	bot._lastPurchaseAttempt.name, bot._lastPurchaseAttempt.t = name, t
+	return false
 end
 
 local function HasSufficientTp()
@@ -159,6 +169,24 @@ local function HasSufficientTp()
 	return tCharges >= 2
 		or (tCharges >= 1 and Item.HasItem( bot, 'item_travel_boots' ))
 		or (tCharges >= 1 and Item.HasItem( bot, 'item_travel_boots_2' ))
+end
+
+local function ClearCurrBuyingBasicItemList()
+	-- NOTE: despite its name, this function was used as "pop last component";
+	-- keep behavior to avoid regressions.
+	bot.countInvCheck = 0
+	bot.currBuyingBasicItem = nil
+	bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList] = nil
+end
+
+-- safe pop entire state when finishing/abandoning a composite item
+local function _resetCurrentTarget()
+	bot.countInvCheck = 0
+	bot.currBuyingItemInPurchaseList = nil
+	bot.currBuyingBasicItem = nil
+	bot.currBuyingBasicItemList = {}
+	bot.currBuyingBasicItemRefList = {}
+	bot.currBuyingRequiredCounts = nil
 end
 
 local function GeneralPurchase()
@@ -182,8 +210,13 @@ local function GeneralPurchase()
 		end
 	end
 
-	local cost = itemCost
+	-- if current last component is already satisfied (picked up or bought earlier), skip it
+	local neededHead = _popIfNoLongerNeeded()
+	if not neededHead then return end -- nothing left; higher-level loop will progress/retarget
+	bot.currBuyingBasicItem = neededHead
+	if _antiSpamPurchase(bot.currBuyingBasicItem) then return end
 
+	local cost = itemCost
 
 	if bot.lastItemToBuy == 'item_boots'
 		and bot.currBuyingItemInPurchaseList == 'item_travel_boots'
@@ -283,18 +316,21 @@ local function GeneralPurchase()
 		--当信使购买神秘商店物品后
 		if bot.SecretShop
 			and courier ~= nil
-			and GetCourierState( courier ) == COURIER_STATE_IDLE
 			and courier:DistanceFromSecretShop() == 0
 		then
-			if courier:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) == PURCHASE_ITEM_SUCCESS
-			then
-				-- mark purchase time to avoid immediate duplicate re-buys
-				MarkBought(bot, bot.currBuyingBasicItem)
+			local res = courier:ActionImmediate_PurchaseItem(bot.currBuyingBasicItem)
+			if res == PURCHASE_ITEM_SUCCESS then
+				ClearCurrBuyingBasicItemList()
+				bot.SecretShop = false
+				return
+			elseif GetItemStockCount(bot.currBuyingBasicItem) < 1 then
+				-- out of stock → don’t block the queue
 				ClearCurrBuyingBasicItemList()
 				bot.SecretShop = false
 				return
 			end
 		end
+
 
 		--决定是否在神秘购物
 		if bot.bPurchaseFromSecret
@@ -305,47 +341,14 @@ local function GeneralPurchase()
 			if Utils.CountBackpackEmptySpace(bot) > 0 -- has empty slot
 			or bot:DistanceFromSecretShop() > 700
 			then
-				-- =========================================
-				-- skip if we already have enough copies
-				-- and try to recover dropped piece before re-buying.
-				-- =========================================
-		
-				-- If the current basic isn't actually needed anymore, skip it.
-				if not NeedsMoreOf(bot, bot.currBuyingBasicItem) then
-					ClearCurrBuyingBasicItemList()
-					bot.SecretShop = false
-					return
-				end
-		
-				-- Try once per item to recover a dropped owned component that matches our needs.
-				-- This prevents "lost component blocks progress" without spamming.
-				if not bot.triedRecoverThisCycle then
-					local needSet = {}
-					for k,_ in pairs(bot.currReqMap or {}) do needSet[k] = true end
-					if TryRecoverDroppedNeeded(bot, needSet) then
-						bot.triedRecoverThisCycle = true
-						return  -- give the bot a frame to move/pick up
-					end
-					bot.triedRecoverThisCycle = true
-				end
-		
-				-- Guard against rapid repeat buys of the same partial component
-				if RecentlyBought(bot, bot.currBuyingBasicItem, 8) then
-					return -- wait a few seconds; often merges/combines on next frame
-				end
-
-
 				if bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) == PURCHASE_ITEM_SUCCESS
 				then
-					-- mark purchase time to avoid immediate duplicate re-buys
-					MarkBought(bot, bot.currBuyingBasicItem)
 					ClearCurrBuyingBasicItemList()
 					bot.SecretShop = false
 					return
 				else
 					if GetItemStockCount(bot.currBuyingBasicItem ) < 1 then
 						-- out of stock, skip that item.
-						-- print( botName.." failed to purchase item - "..bot.currBuyingBasicItem.." : out of stock.")
 						ClearCurrBuyingBasicItemList()
 						bot.SecretShop = false
 					else
@@ -359,9 +362,14 @@ local function GeneralPurchase()
 	end
 end
 
-
 --加速模式购物逻辑
 local function TurboModeGeneralPurchase()
+
+	-- ensure the current head is still needed (dedupe)
+	local neededHead = _popIfNoLongerNeeded()
+	if not neededHead then return end
+	bot.currBuyingBasicItem = neededHead
+	if _antiSpamPurchase(bot.currBuyingBasicItem) then return end
 
 	if bot.lastItemToBuy ~= bot.currBuyingBasicItem
 	then
@@ -413,46 +421,13 @@ local function TurboModeGeneralPurchase()
 	if bot:GetGold() >= cost
 		and bot:GetItemInSlot( 14 ) == nil
 	then
-		-- =========================================
-		-- skip if we already have enough copies
-		-- and try to recover dropped piece before re-buying.
-		-- =========================================
-
-		-- If the current basic isn't actually needed anymore, skip it.
-		if not NeedsMoreOf(bot, bot.currBuyingBasicItem) then
-			ClearCurrBuyingBasicItemList()
-			bot.SecretShop = false
-			return
-		end
-
-		-- Try once per item to recover a dropped owned component that matches our needs.
-		-- This prevents "lost component blocks progress" without spamming.
-		if not bot.triedRecoverThisCycle then
-			local needSet = {}
-			for k,_ in pairs(bot.currReqMap or {}) do needSet[k] = true end
-			if TryRecoverDroppedNeeded(bot, needSet) then
-				bot.triedRecoverThisCycle = true
-				return  -- give the bot a frame to move/pick up
-			end
-			bot.triedRecoverThisCycle = true
-		end
-
-		-- Guard against rapid repeat buys of the same partial component
-		if RecentlyBought(bot, bot.currBuyingBasicItem, 8) then
-			return -- wait a few seconds; often merges/combines on next frame
-		end
-
-
 		if bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) == PURCHASE_ITEM_SUCCESS
 		then
-			-- mark purchase time to avoid immediate duplicate re-buys
-			MarkBought(bot, bot.currBuyingBasicItem)
 			ClearCurrBuyingBasicItemList()
 			return
 		else
 			if GetItemStockCount(bot.currBuyingBasicItem ) < 1 then
 				-- out of stock, skip that item.
-				-- print( botName.." failed to purchase item - "..bot.currBuyingBasicItem.." : out of stock.")
 				ClearCurrBuyingBasicItemList()
 			else
 				print( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
@@ -464,8 +439,199 @@ end
 function ItemPurchaseThink()
 	currentTime = DotaTime()
 
+	-- ARDM: detect stale hero instance and rebuild purchase list on hero swap
+	local isStale, freshBot, freshName = J.IsStaleARDMHero(bot, botName)
+	if isStale then return end
+	if freshName ~= botName then
+		if not freshBot:IsAlive() then return end
+		print("[ARDM] Item purchase: hero changed from "..botName.." to "..freshName)
+		bot = freshBot
+		botName = freshName
+
+		-- Load new hero's item build
+		local heroFile = string.gsub(botName, "npc_dota_", "")
+		local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotLib/"..heroFile)
+		if ok and newBuild ~= nil and newBuild['sBuyList'] ~= nil then
+			BotBuild = newBuild
+			sPurchaseList = newBuild['sBuyList']
+			sItemSellList = newBuild['sSellList']
+		else
+			sPurchaseList = {}
+			sItemSellList = {}
+		end
+
+		-- Rebuild purchase list, skipping owned items, duplicate boots, early items
+		local bHasBoots = Item.HasBuyBoots(bot)
+			or Item.HasItem(bot, 'item_guardian_greaves')
+			or Item.HasItem(bot, 'item_travel_boots')
+			or Item.HasItem(bot, 'item_travel_boots_2')
+			or Item.HasItem(bot, 'item_boots_of_bearing')
+		local tSkipBoots = {
+			item_boots = true, item_phase_boots = true, item_power_treads = true,
+			item_tranquil_boots = true, item_arcane_boots = true,
+			-- greaves/bearing/travel are intentional upgrades, don't skip
+		}
+
+		bot.purchaseListInReverseOrder = {}
+		local idx = 0
+		for i = #sPurchaseList, 1, -1 do
+			local itemName = sPurchaseList[i]
+			local bSkip = false
+			if Item.IsItemInHero(itemName) then
+				bSkip = true
+			elseif GetGameMode() == GAMEMODE_ARDM and DotaTime() > 2 * 60 and tARDMNeverRebuy[itemName] then
+				bSkip = true
+			elseif bHasBoots and tSkipBoots[itemName] then
+				bSkip = true
+			end
+			if not bSkip then
+				idx = idx + 1
+				bot.purchaseListInReverseOrder[idx] = itemName
+			end
+		end
+
+		-- Build set of all items/components needed by new build
+		local tNewBuildNeeds = {}
+		for _, itemName in ipairs(sPurchaseList) do
+			tNewBuildNeeds[itemName] = true
+			if Item[itemName] ~= nil then
+				for _, comp in pairs(Item[itemName]) do
+					tNewBuildNeeds[comp] = true
+				end
+			end
+		end
+
+		local tNeverSell = {
+			item_aegis = true, item_rapier = true, item_gem = true,
+			item_cheese = true, item_refresher_shard = true,
+			item_moon_shard = true, item_tpscroll = true,
+			item_famango = true, item_great_famango = true, item_greater_famango = true,
+		}
+
+		-- Collect sellable items sorted by cost (cheapest first)
+		local tSellable = {}
+		for slot = 0, 14 do
+			local item = bot:GetItemInSlot(slot)
+			if item ~= nil then
+				local name = item:GetName()
+				if not tNeverSell[name]
+				and not tNewBuildNeeds[name]
+				and not string.find(name, 'token')
+				then
+					table.insert(tSellable, { slot = slot, name = name, cost = GetItemCost(name) })
+				end
+			end
+		end
+		table.sort(tSellable, function(a, b) return a.cost < b.cost end)
+
+		-- Phase 1: sell recipes and cheap items (< 1000g) not in new build
+		local MIN_FREE_SLOTS = 3
+		for _, entry in ipairs(tSellable) do
+			local item = bot:GetItemInSlot(entry.slot)
+			if item ~= nil then
+				if string.find(entry.name, 'recipe') or entry.cost < 1000 then
+					bot:ActionImmediate_SellItem(item)
+					print("[ARDM] Sold: "..entry.name.." (cost: "..entry.cost..")")
+				end
+			end
+		end
+
+		-- Phase 2: sell more if inventory still too full
+		local nUsedSlots = 0
+		for slot = 0, 8 do
+			if bot:GetItemInSlot(slot) ~= nil then nUsedSlots = nUsedSlots + 1 end
+		end
+		local nFreeSlots = 9 - nUsedSlots
+		if nFreeSlots < MIN_FREE_SLOTS then
+			for _, entry in ipairs(tSellable) do
+				if nFreeSlots >= MIN_FREE_SLOTS then break end
+				local item = bot:GetItemInSlot(entry.slot)
+				if item ~= nil then
+					bot:ActionImmediate_SellItem(item)
+					print("[ARDM] Sold (full inv): "..entry.name.." (cost: "..entry.cost..")")
+					nFreeSlots = nFreeSlots + 1
+				end
+			end
+		end
+
+		-- Reset purchase state machine
+		bot.currBuyingItemInPurchaseList = nil
+		bot.currBuyingBasicItem = nil
+		bot.currBuyingBasicItemList = {}
+		bot.currBuyingBasicItemRefList = {}
+		bot.currBuyingRequiredCounts = nil
+		bot.rebuildCount = 0
+		bot.countInvCheck = 0
+	end
+
+	-- Detect position swap from !pos command: rebuild purchase list for new role
+	if bot.needPurchaseRebuild then
+		bot.needPurchaseRebuild = nil
+		local nNewPos = J.GetPosition(bot)
+		print("[PosSwap] Item purchase rebuild for "..botName.." -> pos"..nNewPos)
+
+		-- Reload BotBuild to get new role's item list
+		local heroFile = string.gsub(botName, "npc_dota_", "")
+		local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotLib/"..heroFile)
+		if ok and newBuild ~= nil and newBuild['sBuyList'] ~= nil then
+			BotBuild = newBuild
+			sPurchaseList = newBuild['sBuyList']
+			sItemSellList = newBuild['sSellList']
+		end
+
+		-- Rebuild purchase list, skipping:
+		-- 1. Items the bot already owns (final item in inventory)
+		-- 2. Items whose ALL components the bot already has (final item effectively built)
+		-- 3. Duplicate boots if bot already has boots
+		if sPurchaseList then
+			local bHasBoots = Item.HasBuyBoots(bot)
+				or Item.HasItem(bot, 'item_guardian_greaves')
+				or Item.HasItem(bot, 'item_travel_boots')
+				or Item.HasItem(bot, 'item_travel_boots_2')
+				or Item.HasItem(bot, 'item_boots_of_bearing')
+			local tSkipBoots = {
+				item_boots = true, item_phase_boots = true, item_power_treads = true,
+				item_tranquil_boots = true, item_arcane_boots = true,
+				-- greaves/bearing/travel are intentional upgrades, don't skip
+			}
+
+			bot.purchaseListInReverseOrder = {}
+			local idx = 0
+			for i = #sPurchaseList, 1, -1 do
+				local itemName = sPurchaseList[i]
+				local bSkip = false
+
+				-- Already own it
+				if Item.IsItemInHero(itemName) then
+					bSkip = true
+				-- Duplicate boots
+				elseif bHasBoots and tSkipBoots[itemName] then
+					bSkip = true
+				-- Early game items past laning (same as ARDM)
+				elseif DotaTime() > 10 * 60 and tARDMNeverRebuy[itemName] then
+					bSkip = true
+				end
+
+				if not bSkip then
+					idx = idx + 1
+					bot.purchaseListInReverseOrder[idx] = itemName
+				end
+			end
+		end
+
+		-- Reset purchase state machine
+		bot.currBuyingItemInPurchaseList = nil
+		bot.currBuyingBasicItem = nil
+		bot.currBuyingBasicItemList = {}
+		bot.currBuyingBasicItemRefList = {}
+		bot.currBuyingRequiredCounts = nil
+		bot.rebuildCount = 0
+		bot.countInvCheck = 0
+		print("[PosSwap] Purchase list rebuilt with "..#bot.purchaseListInReverseOrder.." items")
+	end
+
 	if bot.lastItemPurchaseFrameProcessTime == nil then bot.lastItemPurchaseFrameProcessTime = currentTime end
-	if currentTime - bot.lastItemPurchaseFrameProcessTime < 1 then return end
+	if currentTime > 30 and (currentTime - bot.lastItemPurchaseFrameProcessTime < 1) then return end
 	bot.lastItemPurchaseFrameProcessTime = currentTime
 
 	if ( GetGameState() ~= GAME_STATE_PRE_GAME and GetGameState() ~= GAME_STATE_GAME_IN_PROGRESS )
@@ -489,12 +655,26 @@ function ItemPurchaseThink()
 	botStashValue = bot:GetStashValue()
 	botDistanceFromFountain = bot:DistanceFromFountain()
 
+	-- try to recover own dropped items (generic, not only for bear)
+	local dropped = GetDroppedItemList()
+	for _, d in pairs(dropped) do
+		if d ~= nil and d.owner == bot and d.item ~= nil and not string.find(d.item:GetName(), 'token') then
+			local dist = GetUnitToLocationDistance(bot, d.location)
+			if dist > 200 and dist < 1000 then
+				bot:Action_MoveToLocation(d.location)
+			elseif dist <= 100 then
+				bot:Action_PickUpItem(d.item)
+				return
+			end
+		end
+	end
+
 	if bot == Utils.GetLoneDruid(bot).hero then
 		local bear = Utils.GetLoneDruid(bot).bear
 		if bear ~= nil then
 			local hEnemyList = J.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE)
 			if #hEnemyList >= 1 then return end
-	
+			
 			if not bear:IsAlive() or bear:IsChanneling() or bear:IsUsingAbility() or Utils.CountBackpackEmptySpace(bear) <= 0 then return end
 			if bear:HasModifier('modifier_item_ultimate_scepter_consumed') then return end
 
@@ -835,6 +1015,45 @@ function ItemPurchaseThink()
 		end
 	end
 
+	-- Ward slot management for supports (pos 4/5):
+	-- Move wards to backpack when not actively warding to free up a main slot.
+	-- Move them back to main inventory when entering ward mode.
+	if J.GetPosition(bot) >= 4 and currentTime > (bot._lastWardSwapTime or 0) + 3 then
+		local bIsWarding = botMode == BOT_MODE_WARD
+		local tWardNames = { 'item_ward_observer', 'item_ward_sentry', 'item_ward_dispenser' }
+
+		for _, wardName in ipairs(tWardNames) do
+			local wardSlot = bot:FindItemSlot(wardName)
+			if wardSlot >= 0 then
+				if bIsWarding then
+					-- Move ward from backpack (6-8) to main inventory if there's a free slot
+					if wardSlot >= 6 and wardSlot <= 8 then
+						for mainSlot = 0, 5 do
+							local mainItem = bot:GetItemInSlot(mainSlot)
+							if mainItem == nil then
+								bot:ActionImmediate_SwapItems(wardSlot, mainSlot)
+								bot._lastWardSwapTime = currentTime
+								break
+							end
+						end
+					end
+				else
+					-- Move ward from main inventory (0-5) to backpack if backpack has space
+					if wardSlot >= 0 and wardSlot <= 5 then
+						for bpSlot = 6, 8 do
+							local bpItem = bot:GetItemInSlot(bpSlot)
+							if bpItem == nil then
+								bot:ActionImmediate_SwapItems(wardSlot, bpSlot)
+								bot._lastWardSwapTime = currentTime
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
 	if ( GetGameMode() ~= 23 and botLevel > 6 and currentTime > bot.fullInvCheck + 1.0
 		and (botDistanceFromFountain <= 200 or bot:DistanceFromSecretShop() <= 200 ))
 		or ( GetGameMode() == 23 and botLevel > 9 and currentTime > bot.fullInvCheck + 1.0 )
@@ -884,23 +1103,6 @@ function ItemPurchaseThink()
 		bot.fullInvCheck = currentTime
 	end
 
-	--出售廉价装备, 可能偶然卖掉components
-	-- if bot:GetLevel() >= 10 and currentTime > bot.sell_time + 1
-	-- and ( botDistanceFromFountain <= 200 or bot:DistanceFromSecretShop() <= 100 ) then
-	-- 	for i = 1, 8
-	-- 	do
-	-- 		local item = bot:GetItemInSlot(i)
-	-- 		local itemName = item:GetName()
-	-- 		if item ~= nil and GetItemCost(itemName) <= 150
-	-- 		and itemName ~= 'item_ward_sentry'
-	-- 		and itemName ~= 'item_ward_observer'
-	-- 		and itemName ~= 'item_smoke_of_deceit'
-	-- 		and itemName ~= 'item_dust' then
-	-- 			bot:ActionImmediate_SellItem(item)
-	-- 		end
-	-- 	end
-	-- end
-
 	--出售过渡装备
 	local countEmptyBackpack = Utils.CountBackpackEmptySpace(bot)
 	if currentTime > bot.sell_time + 0.5
@@ -940,27 +1142,69 @@ function ItemPurchaseThink()
 		bot:ActionImmediate_SellItem(bot:GetItemInSlot(bot:FindItemSlot('item_mask_of_madness')))
 	end
 
+	-- Cores drop normal/great lotuses after 30min to free up slots for real items.
+	-- Greater lotus (item_greater_famango) is kept by everyone — too valuable to drop.
+	if currentTime > 30 * 60 and J.IsCore(bot) then
+		local tDropLotus = { 'item_famango', 'item_great_famango' }
+		for _, lotusName in ipairs(tDropLotus) do
+			local slot = bot:FindItemSlot(lotusName)
+			if slot >= 0 then
+				bot:Action_DropItem(bot:GetItemInSlot(slot), bot:GetLocation())
+				print("[Item] Core "..botName.." dropped "..lotusName.." (past 30min)")
+			end
+		end
+	end
+
 	if #bot.purchaseListInReverseOrder == 0 then
-		ClearCurrBuyingBasicItemList()
+		_resetCurrentTarget()
 		bot:SetNextItemPurchaseValue( 0 )
 		return
 	end
 
+	-- Only skip raw boots of speed when we already have ANY boots.
+	-- All upgraded boots (treads, phase, arcane, tranquil, greaves, travel,
+	-- bearing) are intentional build items and must NEVER be skipped.
+	local tRawBootsOnly = {
+		item_boots = true,
+	}
+
 	if bot.currBuyingItemInPurchaseList == nil
 	and #bot.currBuyingBasicItemList == 0
 	then
+		-- Skip duplicate basic boots (not upgrades like greaves/travel/bearing)
+		while #bot.purchaseListInReverseOrder > 0 do
+			local nextItem = bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder]
+			if tRawBootsOnly[nextItem] and (Item.HasBuyBoots(bot)
+				or Item.HasItem(bot, 'item_guardian_greaves')
+				or Item.HasItem(bot, 'item_travel_boots')
+				or Item.HasItem(bot, 'item_travel_boots_2')
+				or Item.HasItem(bot, 'item_boots_of_bearing'))
+			then
+				print("[Purchase] Skipping "..nextItem.." — already have boots")
+				bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
+			else
+				break
+			end
+		end
+		if #bot.purchaseListInReverseOrder == 0 then
+			_resetCurrentTarget()
+			bot:SetNextItemPurchaseValue(0)
+			return
+		end
+
 		bot.currBuyingItemInPurchaseList = bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder]
 		local basicItemTable = Item.GetBasicItems( { bot.currBuyingItemInPurchaseList } )
-
-		bot.currReqMap = BuildRequirementMapFor(bot.currBuyingItemInPurchaseList)
-		bot.triedRecoverThisCycle = false
-
+		-- original behavior: reverse-half interleave to spread purchases
 		for i = 1, math.ceil( #basicItemTable / 2 )
 		do
 			bot.currBuyingBasicItemList[i] = basicItemTable[#basicItemTable-i+1]
 			bot.currBuyingBasicItemList[#basicItemTable-i+1] = basicItemTable[i]
 		end
 		bot.currBuyingBasicItemRefList = Utils.Deepcopy(bot.currBuyingBasicItemList)
+		-- build the required counts map for dedupe and re-buy-missing
+		bot.currBuyingRequiredCounts = _buildRequiredCounts(bot.currBuyingBasicItemRefList)
+		-- proactively drop already-satisfied components to avoid overbuying
+		_popIfNoLongerNeeded()
 	end
 
 	if #bot.currBuyingBasicItemList == 0
@@ -973,27 +1217,26 @@ function ItemPurchaseThink()
 				and Item.GetItemTotalWorthInSlots(Utils.GetLoneDruid(bot).bear) < 28000
 				and Item.IsItemInTargetHero(bot.currBuyingItemInPurchaseList, Utils.GetLoneDruid(bot).bear)
 			)
-			or bot.countInvCheck > 2 * 60 -- if can't finish the item for a long time
+			or bot.countInvCheck > (GetGameMode() == GAMEMODE_ARDM and 30 or 3 * 60) -- ARDM: 30s timeout, normal: 3min
 		then
 			-- skip it and continue next
 			bot.countInvCheck = 0
-			bot.currBuyingItemInPurchaseList = nil
+			_resetCurrentTarget()
 			bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
-			-- clear requirement map so next item recomputes its own
-			bot.currReqMap = nil
-			bot.triedRecoverThisCycle = false
 		elseif currentTime > bot.lastInvCheck + 1.0 then
 			bot.lastInvCheck = currentTime
 			if bot.rebuildCount < 3 and botCourierValue == 0 and botStashValue == 0 and botName ~= "npc_dota_hero_lone_druid" then
 				bot.rebuildCount = bot.rebuildCount + 1
-				-- try rebuild it
+				-- try rebuild it based on what's actually missing
 				local newList = Item.GetReducedPurchaseList(bot, bot.currBuyingBasicItemRefList)
-				-- while rebuilding, only requeue basics we still need for this composite
 				for _, value in pairs(newList) do
-					if not Item.IsItemInHero(value) and NeedsMoreOf(bot, value) then
-						table.insert(bot.currBuyingBasicItemList, value)
+					if not Item.IsItemInHero(value) then
+						bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList+1] = value
 					end
 				end
+				-- refresh counts after rebuild
+				bot.currBuyingRequiredCounts = _buildRequiredCounts(bot.currBuyingBasicItemList)
+				_popIfNoLongerNeeded()
 			else
 				-- and can't finish even with lots of gold
 				if botGold > GetItemCost(bot.currBuyingItemInPurchaseList) * 2 and botGold >= 2000 then
@@ -1005,7 +1248,7 @@ function ItemPurchaseThink()
 	then
 		if bot.currBuyingBasicItem == nil
 		then
-			bot.currBuyingBasicItem = bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList]
+			bot.currBuyingBasicItem = _popIfNoLongerNeeded()
 		else
 			if GetGameMode() == 23
 			then
@@ -1028,12 +1271,6 @@ function SetPairedItems(itemList)
 			bot:ActionImmediate_SellItem( bot:GetItemInSlot( nOldSlot ) )
 		end
 	end
-end
-
-function ClearCurrBuyingBasicItemList()
-	bot.countInvCheck = 0
-	bot.currBuyingBasicItem = nil
-	bot.currBuyingBasicItemList[#bot.currBuyingBasicItemList] = nil
 end
 
 function IsThereHealingInStash(unit)

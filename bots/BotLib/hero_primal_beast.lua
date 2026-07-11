@@ -167,6 +167,13 @@ local OnslaughtETA = 0
 
 function X.SkillsComplement()
 
+    Onslaught       = bot:GetAbilityByName('primal_beast_onslaught')
+    Trample         = bot:GetAbilityByName('primal_beast_trample')
+    Uproar          = bot:GetAbilityByName('primal_beast_uproar')
+    RockThrow       = bot:GetAbilityByName('primal_beast_rock_throw')
+    Pulverize       = bot:GetAbilityByName('primal_beast_pulverize')
+    BeginOnslaught  = bot:GetAbilityByName('primal_beast_onslaught_release')
+
     botTarget = J.GetProperTarget(bot)
 	nEnemyHeroes = J.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)
 	nInRangeAlly = J.GetNearbyHeroes(bot, 1600, false, BOT_MODE_NONE)
@@ -302,9 +309,11 @@ function X.ConsiderOnslaught()
     end
 
     if J.IsFarming(bot) or (J.IsPushing(bot) and #nInRangeAlly <= 1) or (J.IsDefending(bot) and #nEnemyHeroes == 0) then
+        local nManaCost = Onslaught:GetManaCost()
         local nCreeps = bot:GetNearbyCreeps(800, true)
         if J.IsValid(nCreeps[1])
         and J.GetMP(bot) > 0.5
+        and J.GetManaAfter(nManaCost) > 0.3
         and not J.IsRunning(nCreeps[1])
         and J.CanBeAttacked(nCreeps[1])
         and J.IsAttacking(bot)
@@ -359,6 +368,7 @@ function X.ConsiderTrample()
         and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
         and not botTarget:HasModifier('modifier_oracle_false_promise_timer')
+        and not botTarget:HasModifier('modifier_item_blade_mail_reflect')
         then
             bot.trample_status = {'engaging', botTarget:GetLocation(), botTarget}
             return BOT_ACTION_DESIRE_HIGH
@@ -370,8 +380,9 @@ function X.ConsiderTrample()
     and bot:WasRecentlyDamagedByAnyHero(3)
     then
         if J.IsValidHero(nEnemyHeroes[1])
-        and J.CanBeAttacked(botTarget)
-        and J.IsInRange(bot, botTarget, nRadius)
+        and J.CanBeAttacked(nEnemyHeroes[1])
+        and J.IsInRange(bot, nEnemyHeroes[1], nRadius)
+        and not nEnemyHeroes[1]:HasModifier('modifier_item_blade_mail_reflect')
         then
             bot.trample_status = {'retreating', J.GetTeamFountain(), nil}
             return BOT_ACTION_DESIRE_HIGH
@@ -417,6 +428,7 @@ function X.ConsiderTrample()
         and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
         and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
         and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+        and not enemyHero:HasModifier('modifier_item_blade_mail_reflect')
         then
             bot.trample_status = {'engaging', enemyHero:GetLocation(), enemyHero}
             return BOT_ACTION_DESIRE_HIGH

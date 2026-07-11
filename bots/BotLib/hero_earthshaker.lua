@@ -366,6 +366,34 @@ function X.ConsiderFissure()
 		end
 	end
 
+	--Farming: use Fissure on neutral creeps
+	if J.IsFarming(bot) and J.GetManaAfter(Fissure:GetManaCost()) > 0.4
+	and nAbilityLevel >= 2
+	then
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps(nCastRange)
+		if nNeutralCreeps ~= nil and #nNeutralCreeps >= 3
+		then
+			return BOT_ACTION_DESIRE_HIGH, J.GetCenterOfUnits(nNeutralCreeps)
+		end
+		local nLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+		if nLaneCreeps ~= nil and #nLaneCreeps >= 4
+		and J.CanBeAttacked(nLaneCreeps[1])
+		then
+			return BOT_ACTION_DESIRE_HIGH, J.GetCenterOfUnits(nLaneCreeps)
+		end
+	end
+
+	--Roshan: use Fissure on Roshan
+	if J.IsDoingRoshan(bot)
+	then
+		if J.IsRoshan(botTarget)
+		and J.IsInRange(bot, botTarget, nCastRange)
+		and J.GetManaAfter(Fissure:GetManaCost()) > 0.4
+		then
+			return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+		end
+	end
+
     return BOT_ACTION_DESIRE_NONE, 0
 end
 

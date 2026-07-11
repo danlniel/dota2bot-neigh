@@ -100,110 +100,103 @@ function BonusTimers:GetBestItems(neediest, tier)
 	return NeutralItems:GetTokenTableForTier(tier)
 end
 
--- Awards neutral items to bots based on Settings
+-- Helper: select and give the best neutral item to a bot for a tier.
+-- Handles ALL state changes: gives item, updates neutralsFound, sets next timing.
+local function AwardNeutralToBot(bot, tier, team)
+	local items = NeutralItems:GetTokenTableForTier(tier)
+	if items == nil then return false end
+
+	local bestItem, bestDesire = nil, 0
+	for _, item in ipairs(items) do
+		local desire = NeutralItems:GetBotDesireForItem(bot, item)
+		Debug:Print(bot.stats.name..': item: '..item.realName..' : '..desire)
+		if bestItem == nil or desire > bestDesire then
+			bestItem = item
+			bestDesire = desire
+		end
+	end
+
+	if bestItem then
+		NeutralItems:GiveToUnit(bot, bestItem)
+		if Settings.neutralItems.announce then
+			Utilities:AnnounceNeutral(bot, bestItem, MSG_NEUTRAL_FIND)
+		end
+	end
+
+	-- Update state AFTER giving item
+	bot.stats.neutralsFound = tier
+	tierAwards[team][tier] = tierAwards[team][tier] + 1
+
+	-- Set timing for next tier (don't call SetBotFindTier — it double-mutates neutralsFound)
+	local nextTiming = Settings.neutralItems.timings[tier + 1]
+	if nextTiming ~= nil then
+		local shift = NeutralItems:GetTimingDifficultyScaleShift(tier + 1)
+		local variance = Utilities:GetIntegerVariance(Settings.neutralItems.variance)
+		bot.stats.neutralTiming = nextTiming + variance + shift
+		if bot.stats.neutralTiming < 0 then bot.stats.neutralTiming = 0 end
+		Debug:Print(bot.stats.name..': Next timing for tier '..(tier+1)..': '..bot.stats.neutralTiming)
+	else
+		bot.stats.neutralTiming = -1 -- no more tiers
+	end
+
+	if tierAwards[team][tier] >= Settings.neutralItems.maxPerTier[tier] then
+		NeutralItems:CloseBotFindTier(tier, team)
+	end
+	return true
+end
+
+-- Awards neutral items to bots based on Settings.
+-- Rules:
+--   1. Don't award tier N+1 until ALL bots on BOTH teams have tier N
+--   2. Award at most one bot per team per tick (prevents cascading)
+--   3. Both teams are processed each tick (fairness)
 function BonusTimers:NeutralItemFindTimer()
 	local gameTime = Utilities:GetAbsoluteTime()
-	-- Don't do anything if time is negative
 	if gameTime < 0 then return math.ceil(gameTime * -1) end
-	-- Stop if we've given all bots tier 5 items
 	if BonusTimers:IsFindingDone() then
 		Timers:RemoveTimer(names.neutralItemFindTimer)
 		Utilities:Print('NeutralItemFindTimer done.  Unregistering.', MSG_CONSOLE_GOOD)
 		return nil
 	end
-	-- Logic to do things here, we'll use this method primarily for giving neutrals to bots
-	local interval = 0
-	-- loop over all bots
+
+	-- Find the lowest tier that any bot still needs across both teams.
+	-- This blocks tier N+1 until everyone has tier N.
+	local lowestPendingTier = nil
 	for team = 2, 3 do
-	for _, bot in pairs(AllBots[team]) do
-		-- if time is greater than stats.neutralTiming, we try to award an item
-		-- negative numbers disable the award
-		local tier =  bot.stats.neutralsFound + 1
-		if gameTime > bot.stats.neutralTiming and
-			 bot.stats.neutralTiming >= 0 and
-			 bot.stats.neutralTiming ~= nil and
-			 tierAwards[team][tier] < Settings.neutralItems.maxPerTier[tier] then
-			-- Register NeutralItemDoleTimer (This will only happen once)
-			------ 7.33 Edits - This is now unnecessary
-			----if not inits.neutralItemDoleTimer then
-			----  print('Item dropped! Registering NeutralItemDoleTimer.')
-			----  Timers:CreateTimer(names.neutralItemDoleTimer, {callback =  BonusTimers['NeutralItemDoleTimer']} )
-			----  inits.neutralItemDoleTimer = true
-			----end
-			------ End 7.33 Edits
-			-- Increment tiers 'found' for this bot
-			bot.stats.neutralsFound = tier
-			-- Check if tier still has items to award
-			if tierAwards[team][tier] < Settings.neutralItems.maxPerTier[tier] then
-				-- increment awards
-				tierAwards[team][tier] = tierAwards[team][tier] + 1
-				-- Get the neediest bot
-				local neediest = NeutralItems:NeediestBotForToken(tier)
-				if neediest ~= nil then
-					------ 7.33 Edits - This is now obsolete
-					------ Based on settings, award this bot a suitable item directly, or
-					------ just roll one randomly and leave it for the doler
-					----local item
-					----if Settings.neutralItems.assignRandomly then
-					----  item = NeutralItems:SelectRandomItem(tier)
-					------ harder: just get the bot an item we know they like
-					----else
-					----  item = NeutralItems:SelectRandomItem(tier, neediest)
-					----end
-					------ End 7.33 Edits
-					-- Get the table for this tier for this bot
-					local items = NeutralItems:GetTokenTableForTier(tier)
-					-- sanity check
-					if items ~= nil then
-						-- Debug
-						for _, item in ipairs(items) do
-							local desire = NeutralItems:GetBotDesireForItem(neediest, item)
-							Debug:Print(neediest.stats.name..': '..' item: '..item.realName.. ' : '..desire)
-						end
-						-- Select the best item
-						local bestItem
-						local bestDesire = 0
-						for _, item in ipairs(items) do
-							if bestItem == nil then
-								bestItem = item
-								bestDesire = NeutralItems:GetBotDesireForItem(neediest, item)
-								Debug:Print(neediest.stats.name..': '..item.realName..': '..tostring(bestDesire))
-							else
-								local desire = NeutralItems:GetBotDesireForItem(neediest, item)
-								Debug:Print(neediest.stats.name..': '..item.realName..': '..tostring(desire))
-								if desire > bestDesire then
-									bestItem = item
-									bestDesire = desire
-								end
-							end
-						end
-						-- Give it
-						NeutralItems:GiveToUnit(neediest, bestItem)
-						-- perhaps announce the item has been found
-						if Settings.neutralItems.announce then
-							Utilities:AnnounceNeutral(neediest, bestItem, MSG_NEUTRAL_FIND)
-						end
-						-- put the item in the stash
-						--table.insert(NeutralStash[tier], item)
-						-- add the item to the list of awarded items
-						-- ##TODO: Query returns to make sure we only put items in the stash
-						-- that we created, rather than items the bot may have picked up
-						-- on its own in game.  This would probably have holes anyway, since
-						-- we can't tell items apart
-						--table.insert(AwardedNeutrals, item)
+		for _, bot in pairs(AllBots[team]) do
+			if bot.stats then
+				local botTier = bot.stats.neutralsFound + 1
+				if Settings.neutralItems.maxPerTier[botTier] ~= nil then
+					if lowestPendingTier == nil or botTier < lowestPendingTier then
+						lowestPendingTier = botTier
 					end
-				
-					-- Set time for next find
-					NeutralItems:SetBotFindTier(bot, tier + 1)
 				end
-			end
-			-- Close the tier if we hit the limit
-			if tierAwards[team][tier] >= Settings.neutralItems.maxPerTier[tier] then
-				NeutralItems:CloseBotFindTier(tier, team)
 			end
 		end
 	end
+
+	if lowestPendingTier == nil then
+		return neutralFindInterval
 	end
+
+	-- Award one bot per team that needs lowestPendingTier and whose timer expired.
+	for team = 2, 3 do
+		local awarded = false
+		for _, bot in pairs(AllBots[team]) do
+			if not awarded and bot.stats then
+				local botTier = bot.stats.neutralsFound + 1
+				if botTier == lowestPendingTier
+				and bot.stats.neutralTiming ~= nil
+				and bot.stats.neutralTiming >= 0
+				and gameTime >= bot.stats.neutralTiming
+				and tierAwards[team][botTier] < Settings.neutralItems.maxPerTier[botTier] then
+					AwardNeutralToBot(bot, botTier, team)
+					awarded = true
+				end
+			end
+		end
+	end
+
 	return neutralFindInterval
 end
 

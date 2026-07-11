@@ -365,9 +365,7 @@ function X.ConsiderQ()
 	end
 
 	--发育时对野怪输出
-	if J.IsFarming( bot ) and nSkillLV >= 3
-		and ( bot:GetAttackDamage() < 200 or nMP > 0.88 )
-		and nMP > 0.78
+	if J.IsFarming( bot ) and J.GetManaAfter( nManaCost ) > 0.3
 	then
 		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( 700 )
 		if #nNeutralCreeps >= 3
@@ -375,9 +373,21 @@ function X.ConsiderQ()
 			for _, creep in pairs( nNeutralCreeps )
 			do
 				if J.IsValid( creep )
-					and creep:GetHealth() >= 900
-					and creep:GetMagicResist() < 0.3
-					and J.IsInRange( creep, bot, 350 )
+					and J.IsInRange( creep, bot, nCastRange )
+					and J.GetAroundTargetEnemyUnitCount( creep, nRadius ) >= 3
+				then
+					return BOT_ACTION_DESIRE_HIGH, creep
+				end
+			end
+		end
+		local nLaneCreeps = bot:GetNearbyLaneCreeps( nCastRange, true )
+		if #nLaneCreeps >= 3
+		then
+			for _, creep in pairs( nLaneCreeps )
+			do
+				if J.IsValid( creep )
+					and not creep:HasModifier( "modifier_fountain_glyph" )
+					and J.IsInRange( creep, bot, nCastRange )
 					and J.GetAroundTargetEnemyUnitCount( creep, nRadius ) >= 3
 				then
 					return BOT_ACTION_DESIRE_HIGH, creep
@@ -411,13 +421,11 @@ function X.ConsiderQ()
 	end
 
 	--打肉的时候输出
-	if bot:GetActiveMode() == BOT_MODE_ROSHAN
-		and bot:GetMana() >= 600
+	if J.IsDoingRoshan( bot )
 	then
 		if J.IsRoshan( botTarget )
-			and not J.IsDisabled( botTarget )
-			and not botTarget:IsDisarmed()
 			and J.IsInRange( botTarget, bot, nCastRange )
+			and J.GetManaAfter( nManaCost ) > 0.3
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget
 		end
@@ -466,6 +474,25 @@ function X.ConsiderQ()
 				and not J.IsDisabled( npcEnemy )
 			then
 				return BOT_ACTION_DESIRE_HIGH, npcEnemy
+			end
+		end
+	end
+
+	--farming: use on neutral creep camps with 3+ creeps
+	if J.IsFarming( bot )
+		and #hEnemyHeroList == 0
+		and J.GetManaAfter( nManaCost ) > 0.3
+	then
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
+		if #nNeutralCreeps >= 3
+		then
+			local nTargetCreep = J.GetMostHpUnit( nNeutralCreeps )
+			if J.IsValid( nTargetCreep )
+				and not J.IsRoshan( nTargetCreep )
+				and J.CanCastOnNonMagicImmune( nTargetCreep )
+				and J.CanCastOnTargetAdvanced( nTargetCreep )
+			then
+				return BOT_ACTION_DESIRE_HIGH, nTargetCreep
 			end
 		end
 	end

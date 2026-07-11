@@ -77,6 +77,8 @@ local Localization = {
         fret_vote_for_ally = '%s voted ally scale: %s.',
         fret_ally_scale_ended = "Ally bots bonus scale selected: ",
         fret_found_netural_item = "Found Neutral Item: ",
+        fret_took_neutral_item = "Took Neutral Item from Stash: ",
+        fret_returned_neutral_item = "Returned Neutral Item to Stash: ",
         fret_req_error_msg = "Error occurred! Please try again later.",
         fret_new_diff = "New available difficulty: %d",
         random_responses = {
@@ -120,7 +122,15 @@ local Localization = {
             "Try to win by typing your poor keyboard with your poor little fingers?",
             "please stfu, it’s for everyone’s sake.",
             "You proofed that this game's matchmaking has no standards, another bot tier player again."
-        }
+        },
+        say_assemble = {"On my way!", "Coming!", "I'm coming, hold on!", "Heading there now!"},
+        say_roshan = {"Let's do Roshan!", "Roshan time!", "Going for Rosh!"},
+        say_push_top = {"Let's push top!", "Pushing top!", "Push top lane!"},
+        say_push_mid = {"Let's push mid!", "Pushing mid!", "Push mid lane!"},
+        say_push_bot = {"Let's push bot!", "Pushing bot!", "Push bot lane!"},
+        say_defend_top = {"Defend top!", "They're pushing top!", "Help top lane!"},
+        say_defend_mid = {"Defend mid!", "They're pushing mid!", "Help mid lane!"},
+        say_defend_bot = {"Defend bot!", "They're pushing bot!", "Help bot lane!"},
     },
     zh = {
         welcome_msgs = {
@@ -199,6 +209,8 @@ local Localization = {
         fret_voting_ends = "投票将在 %d 秒后结束！",
         fret_diff_selected = "选择的难度：",
         fret_found_netural_item = "找到中立物品：",
+        fret_took_neutral_item = "从储藏处取出中立物品：",
+        fret_returned_neutral_item = "归还中立物品至储藏处：",
         fret_vote_for_ally = '%s 投票选择了盟友奖励比例：%s。',
         fret_ally_scale_ended = "盟友机器人奖励比例已选择：",
         fret_req_error_msg = "发生错误！请稍后再试。",
@@ -244,6 +256,14 @@ local Localization = {
             "请闭嘴，为了大家好。",
             "你证明了这个游戏的匹配没有标准，又一个机器人级别的玩家。"
         },
+        say_assemble = {"我来了！", "马上到！", "等等我，正在赶来！", "正在前往！"},
+        say_roshan = {"打肉山！", "去肉山！", "该打肉山了！"},
+        say_push_top = {"推上路！", "上路推塔！", "一起推上路！"},
+        say_push_mid = {"推中路！", "中路推塔！", "一起推中路！"},
+        say_push_bot = {"推下路！", "下路推塔！", "一起推下路！"},
+        say_defend_top = {"防守上路！", "上路有人推！", "支援上路！"},
+        say_defend_mid = {"防守中路！", "中路有人推！", "支援中路！"},
+        say_defend_bot = {"防守下路！", "下路有人推！", "支援下路！"},
     },
     ru = {
         welcome_msgs = {
@@ -314,6 +334,8 @@ local Localization = {
         fret_voting_ends = "Голосование заканчивается через %d секунд!",
         fret_diff_selected = "Выбранная сложность: ",
         fret_found_netural_item = "Найден нейтральный предмет: ",
+        fret_took_neutral_item = "Взял нейтральный предмет из тайника: ",
+        fret_returned_neutral_item = "Вернул нейтральный предмет в тайник: ",
         fret_vote_for_ally = '%s проголосовал за масштаб союзников: %s.',
         fret_ally_scale_ended = "Выбран масштаб бонуса для союзных ботов: ",
         fret_req_error_msg = "Произошла ошибка! Пожалуйста, попробуйте позже.",
@@ -360,6 +382,14 @@ local Localization = {
             "Пожалуйста, заткнись, это для всеобщего блага.",
             "Ты доказал, что матчмейкинг без стандартов, бот-уровень игрока."
         },
+        say_assemble = {"Иду!", "Уже бегу!", "Держитесь, я иду!", "Направляюсь туда!"},
+        say_roshan = {"Идём на Рошана!", "Рошан!", "Берём Роша!"},
+        say_push_top = {"Пушим топ!", "Давайте пушить топ!", "Пуш верхней!"},
+        say_push_mid = {"Пушим мид!", "Давайте пушить мид!", "Пуш центра!"},
+        say_push_bot = {"Пушим бот!", "Давайте пушить бот!", "Пуш нижней!"},
+        say_defend_top = {"Защищаем топ!", "Враги пушат топ!", "Помогите на топе!"},
+        say_defend_mid = {"Защищаем мид!", "Враги пушат мид!", "Помогите на миде!"},
+        say_defend_bot = {"Защищаем бот!", "Враги пушат бот!", "Помогите на боте!"},
     },
     ja = {
         welcome_msgs = {
@@ -430,6 +460,8 @@ local Localization = {
         fret_voting_ends = "投票はあと %d 秒で終了します！",
         fret_diff_selected = "選択された難易度：",
         fret_found_netural_item = "中立アイテムを見つけました: ",
+        fret_took_neutral_item = "中立アイテムを倉庫から取得: ",
+        fret_returned_neutral_item = "中立アイテムを倉庫に返却: ",
         fret_vote_for_ally = '%s が味方のスケールに投票しました: %s。',
         fret_ally_scale_ended = "味方ボットのボーナススケールが選択されました: ",
         fret_req_error_msg = "エラーが発生しました！後でもう一度お試しください。",
@@ -476,6 +508,14 @@ local Localization = {
             "黙ってくれ、みんなのためだよ。",
             "君はこのゲームのマッチングに基準がない証拠だよ、ボットプレイヤー。"
         },
+        say_assemble = {"向かってるよ！", "今行く！", "待って、向かってる！", "そっちに行くよ！"},
+        say_roshan = {"ロシャンやろう！", "ロシャンの時間だ！", "ロシャン行くぞ！"},
+        say_push_top = {"トップ押そう！", "トッププッシュ！", "トップレーン押すぞ！"},
+        say_push_mid = {"ミッド押そう！", "ミッドプッシュ！", "ミッドレーン押すぞ！"},
+        say_push_bot = {"ボット押そう！", "ボットプッシュ！", "ボットレーン押すぞ！"},
+        say_defend_top = {"トップ守れ！", "敵がトップ押してる！", "トップ助けて！"},
+        say_defend_mid = {"ミッド守れ！", "敵がミッド押してる！", "ミッド助けて！"},
+        say_defend_bot = {"ボット守れ！", "敵がボット押してる！", "ボット助けて！"},
     },
 }
 

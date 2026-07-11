@@ -43,6 +43,7 @@ sRoleItemsBuyList['pos_4'] = {
 	"item_magic_wand",
 	"item_boots",
 	"item_arcane_boots",
+	"item_essence_distiller",--
 	"item_glimmer_cape",--
 	"item_aether_lens",--
 	"item_aghanims_shard",
@@ -94,9 +95,9 @@ sRoleItemsBuyList['pos_1'] = {
     "item_octarine_core",--
     "item_dagon_5",--
     "item_kaya_and_sange",--
+    "item_crellas_crozier",--
     "item_ultimate_scepter_2",
     "item_shivas_guard",
-    "item_ethereal_blade",--
     "item_moon_shard",
     "item_travel_boots_2",--
     "item_wind_waker",--
@@ -118,10 +119,10 @@ sRoleItemsBuyList['pos_2'] = {
     "item_ultimate_scepter",
     "item_octarine_core",--
     "item_dagon_5",--
+    "item_crellas_crozier",--
     "item_kaya_and_sange",--
     "item_ultimate_scepter_2",
     "item_shivas_guard",
-    "item_ethereal_blade",--
     "item_moon_shard",
     "item_travel_boots_2",--
     "item_wind_waker",--
@@ -138,8 +139,9 @@ sRoleItemsBuyList['pos_3'] = {
     "item_phase_boots",
     "item_lotus_orb",--
     "item_veil_of_discord",
+    "item_crellas_crozier",--
 	"item_gungir",--
-    "item_eternal_shroud",--
+    "item_bloodstone",--
     "item_ultimate_scepter",
     "item_shivas_guard",--
 	"item_sheepstick",

@@ -55,11 +55,28 @@ sRoleItemsBuyList['pos_1'] = {
 
 sRoleItemsBuyList['pos_2'] = sRoleItemsBuyList['pos_1']
 
-sRoleItemsBuyList['pos_4'] = sRoleItemsBuyList['pos_1']
-
-sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_1']
-
 sRoleItemsBuyList['pos_3'] = sRoleItemsBuyList['pos_1']
+
+sRoleItemsBuyList['pos_4'] = {
+	"item_tango",
+	"item_tango",
+	"item_double_branches",
+	"item_blood_grenade",
+	"item_faerie_fire",
+
+	"item_magic_wand",
+	"item_arcane_boots",
+	"item_urn_of_shadows",
+	"item_glimmer_cape",--
+	"item_spirit_vessel",--
+	"item_aghanims_shard",
+	"item_guardian_greaves",--
+	"item_sheepstick",--
+	"item_ultimate_scepter_2",
+	"item_moon_shard",
+}
+
+sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_4']
 
 X['sBuyList'] = sRoleItemsBuyList[sRole]
 
@@ -146,6 +163,14 @@ function X.SkillsComplement()
 
 	if J.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
+	-- Re-fetch ability handles each tick for safety against Aghs upgrades
+	abilityQ = bot:GetAbilityByName( sAbilityList[1] )
+	abilityW = bot:GetAbilityByName( sAbilityList[2] )
+	abilityE = bot:GetAbilityByName( sAbilityList[3] )
+	abilityR = bot:GetAbilityByName( sAbilityList[6] )
+	abilityAS = bot:GetAbilityByName( sAbilityList[4] )
+
+	-- Cache per-tick variables
 	botTarget = J.GetProperTarget(bot)
 
     castQDesire, castQTarget = X.ConsiderQ()
@@ -224,8 +249,23 @@ function X.ConsiderQ()
     -- local nSpeed = abilityQ:GetSpecialValueInt('projectile_speed')
     -- local nAbilityLevel = abilityQ:GetLevel()
 
-	-- get the kill
     local nEnemyHeroes = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
+
+	-- Interrupt channeling enemies (high priority)
+	for _, enemyHero in pairs(nEnemyHeroes)
+	do
+		if J.IsValidHero( enemyHero )
+		and J.IsInRange( bot, enemyHero, nCastRange )
+		and J.CanCastOnNonMagicImmune( enemyHero )
+		and J.CanCastOnTargetAdvanced( enemyHero )
+		and enemyHero:IsChanneling()
+		and not J.IsSuspiciousIllusion(enemyHero)
+		then
+			return BOT_ACTION_DESIRE_HIGH, enemyHero, 'Q-InterruptChannel'
+		end
+	end
+
+	-- get the kill
     for _, enemyHero in pairs(nEnemyHeroes)
     do
 		if J.IsValidHero( enemyHero )
@@ -299,6 +339,19 @@ function X.ConsiderW()
 	local botLocation = bot:GetLocation()
 
 	local nEnemysHeroesInSkillRange = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+
+	-- Interrupt channeling enemies: center The Calling silence on them
+	for _, enemyHero in pairs(nEnemysHeroesInSkillRange)
+	do
+		if J.IsValidHero( enemyHero )
+		and J.IsInRange( bot, enemyHero, nCastRange )
+		and J.CanCastOnNonMagicImmune( enemyHero )
+		and enemyHero:IsChanneling()
+		and not J.IsSuspiciousIllusion(enemyHero)
+		then
+			return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+		end
+	end
 
 	local nCanHurtHeroLocationAoE = bot:FindAoELocation( true, true, botLocation, nCastRange, nRadius-30, 0.8, 0 )
 

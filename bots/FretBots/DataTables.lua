@@ -64,19 +64,6 @@ end
 -- Sets up data tables, buffs Fret for debug
 function DataTables:Initialize()
 	Debug:Print('Initializing DataTables')
-	-- Don't do this more than once.
-	--if Flags.isStatsInitialized then return end;
-	-- Lifted From Anarchy - Props
-	Units = FindUnitsInRadius(
-		2,
-		Vector(0, 0, 0),
-		nil,
-		FIND_UNITS_EVERYWHERE,
-		3,
-		DOTA_UNIT_TARGET_HERO,
-		88,
-		FIND_ANY_ORDER,
-		false)
 
 	AllBots = nil
 	AllBots = {
@@ -85,10 +72,40 @@ function DataTables:Initialize()
 	}
 	AllHumanPlayers = {}
 	AllUnits = {}
-	for i, unit in pairs(Units) do
-		-- Initialize data tables for this unit
-		DataTables:GenerateStatsTables(unit)
-		-- DataTables:FixBuggedHeroAbilities()
+
+	-- Use both PlayerResource AND FindUnitsInRadius to find ALL heroes.
+	-- PlayerResource misses some bots (GetPlayer returns nil for some slots).
+	-- FindUnitsInRadius catches heroes PlayerResource missed.
+	-- GenerateStatsTables uses InsertUnique so duplicates are ignored.
+	local nProcessed = {}
+
+	-- Method 1: PlayerResource
+	for nTeam = DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS do
+		local pNum = PlayerResource:GetPlayerCountForTeam(nTeam)
+		for i = 0, pNum - 1 do
+			local playerID = PlayerResource:GetNthPlayerIDOnTeam(nTeam, i)
+			if playerID and playerID >= 0 then
+				local player = PlayerResource:GetPlayer(playerID)
+				if player then
+					local hero = player:GetAssignedHero()
+					if hero then
+						DataTables:GenerateStatsTables(hero)
+						nProcessed[hero] = true
+					end
+				end
+			end
+		end
+	end
+
+	-- Method 2: FindUnitsInRadius (catches any heroes PlayerResource missed)
+	Units = FindUnitsInRadius(
+		2, Vector(0, 0, 0), nil, FIND_UNITS_EVERYWHERE, 3,
+		DOTA_UNIT_TARGET_HERO, 88, FIND_ANY_ORDER, false)
+	for _, unit in pairs(Units) do
+		if not nProcessed[unit] then
+			DataTables:GenerateStatsTables(unit)
+			nProcessed[unit] = true
+		end
 	end
 	print('There are '..#AllBots[RADIANT]..' Radiant bots!')
 	print('There are '..#AllBots[DIRE]..' Dire bots!')
@@ -659,19 +676,33 @@ function DataTables:SetBotPositionFive()
 end
 
 function DataTables:GetRole(hero)
-	-- Carry?
+	-- Try position weights first (covers 127 heroes, data-driven)
+	local okW, posModule = pcall(require, GetScriptDirectory()..'/FunLib/aba_hero_pos_weights')
+	if not okW then okW, posModule = pcall(require, 'bots.FunLib.aba_hero_pos_weights') end
+	if okW and posModule and posModule.HeroPositions and posModule.HeroPositions[hero] then
+		local weights = posModule.HeroPositions[hero]
+		local bestRole = 3  -- default offlane
+		local bestWeight = -1
+		for pos = 1, 5 do
+			if weights[pos] and weights[pos] > bestWeight then
+				bestWeight = weights[pos]
+				bestRole = pos
+			end
+		end
+		if isDebug then print(hero..': role (from weights): '..bestRole..' (weight: '..bestWeight..')') end
+		return bestRole
+	end
+
+	-- Fallback to hardcoded lists
 	if role.CanBeSafeLaneCarry(hero) then
 		if isDebug then print(hero..': role: '..1) end
 		return 1
-	-- MidLane
 	elseif role.CanBeMidlaner(hero) then
 		if isDebug then print(hero..': role: '..2) end
 		return 2
-	-- Offlane
 	elseif role.CanBeOfflaner(hero) then
 		if isDebug then print(hero..': role: '..3) end
 		return 3
-	-- Support is slightly more tricky
 	elseif role.CanBeSupport(hero) then
 		if isDebug then print(hero..': role: '..4) end
 		return 4

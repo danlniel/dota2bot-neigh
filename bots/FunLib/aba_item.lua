@@ -76,7 +76,7 @@ local sNeedDebugItemList =
 --	"item_magic_wand",
 	"item_manta",
 --	"item_mask_of_madness",
-	"item_medallion_of_courage",
+--	"item_medallion_of_courage", -- removed from game
 	"item_mekansm",
 	"item_meteor_hammer",
 	"item_mjollnir",
@@ -190,6 +190,10 @@ Item['sBasicItems'] = {
 	'item_voodoo_mask', --巫毒面具
 	'item_fluffy_hat', --毛毛帽
 	'item_blood_grenade',
+	'item_wizard_hat',
+	'item_chasm_stone',
+	'item_splintmail',
+	'item_shawl',
 }
 
 Item['sSeniorItems'] = {
@@ -204,15 +208,17 @@ Item['sSeniorItems'] = {
 	'item_dragon_lance',
 	'item_force_staff',
 	'item_headdress',
-	'item_hood_of_defiance',
+--	'item_hood_of_defiance', -- removed from game
 	'item_invis_sword',
 	'item_kaya',
 	'item_lesser_crit',
 	'item_maelstrom',
-	'item_medallion_of_courage',
+--	'item_medallion_of_courage', -- removed from game
 	'item_mekansm',
-	'item_necronomicon',
-	'item_necronomicon_2',
+--	'item_necronomicon', -- removed from game
+--	'item_necronomicon_2', -- removed from game
+	'item_essence_distiller',
+	'item_specialists_array',
 	'item_ring_of_basilius',
 	'item_sange',
 	'item_soul_booster',
@@ -276,7 +282,7 @@ Item['sTopItems'] = {
 	'item_monkey_king_bar',
 	'item_moon_shard',
 	'item_meteor_hammer',
-	'item_necronomicon_3',
+--	'item_necronomicon_3', -- removed from game
 	'item_null_talisman',
 	'item_nullifier',
 	'item_orb_of_frost',
@@ -306,7 +312,13 @@ Item['sTopItems'] = {
 	
 	'item_revenants_brooch',
 	'item_boots_of_bearing',
-	'item_wraith_pact',
+--	'item_wraith_pact', -- removed from game
+
+	'item_essence_distiller',
+	'item_specialists_array',
+	'item_hydras_breath',
+	'item_consecrated_wraps',
+	'item_crellas_crozier',
 }
 
 local tTopItemList = {}
@@ -382,6 +394,9 @@ Item['sCanNotSwitchItems'] = {
 		'item_moon_shard',
 		'item_black_king_bar', -- prevent keep swapping with critical items in other settings
 		-- 'item_ward_sentry', -- prevent keep swapping with critical items in other settings
+		'item_famango',            -- Healing Lotus: ally-castable, higher value than wand
+		'item_great_famango',      -- Great Healing Lotus
+		'item_greater_famango',    -- Greater Healing Lotus: very valuable for supports
 }
 
 Item['sSellList'] = {
@@ -438,6 +453,11 @@ Item['sSellList'] = {
 
 	"item_magic_wand",
 	"item_recipe_magic_wand",
+	
+	-- ... existing entries ...
+    'item_splintmail', 'item_chainmail',
+    'item_shawl', 'item_cloak',
+    'item_wizard_hat', 'item_circlet',
 }
 
 local tCanNotSwitchItemList = {}
@@ -625,7 +645,7 @@ Item['item_heavens_halberd']	= GetItemComponents( 'item_heavens_halberd' )[1]
 
 Item['item_helm_of_the_dominator']	= GetItemComponents( 'item_helm_of_the_dominator' )[1]
 
-Item['item_hood_of_defiance']	= GetItemComponents( 'item_hood_of_defiance' )[1]
+-- Item['item_hood_of_defiance'] removed from game
 
 Item['item_hurricane_pike']		= GetItemComponents( 'item_hurricane_pike' )[1]
 
@@ -649,7 +669,7 @@ Item['item_manta']	= GetItemComponents( 'item_manta' )[1]
 
 Item['item_mask_of_madness']	= GetItemComponents( 'item_mask_of_madness' )[1]
 
-Item['item_medallion_of_courage']	= GetItemComponents( 'item_medallion_of_courage' )[1]
+-- Item['item_medallion_of_courage'] removed from game
 
 Item['item_mekansm']	= GetItemComponents( 'item_mekansm' )[1]
 
@@ -673,7 +693,7 @@ Item['item_nullifier']	= GetItemComponents( 'item_nullifier' )[1]
 
 Item['item_oblivion_staff']	= GetItemComponents( 'item_oblivion_staff' )[1]
 
-Item['item_octarine_core']	= {"item_soul_booster", "item_tiara_of_selemene"}
+Item['item_octarine_core']	= GetItemComponents( 'item_octarine_core' )[1]
 
 Item['item_orchid']	= GetItemComponents( 'item_orchid' )[1]
 
@@ -760,7 +780,7 @@ Item['item_gungir']	= GetItemComponents( 'item_gungir' )[1]
 
 Item['item_mage_slayer']	= GetItemComponents( 'item_mage_slayer' )[1]
 
-Item['item_eternal_shroud']	= GetItemComponents( 'item_eternal_shroud' )[1]
+-- Item['item_eternal_shroud'] removed from game in 7.41
 
 Item['item_helm_of_the_overlord']	= GetItemComponents( 'item_helm_of_the_overlord' )[1]
 
@@ -777,7 +797,7 @@ Item['item_revenants_brooch']	= GetItemComponents( 'item_revenants_brooch' )[1]
 
 Item['item_boots_of_bearing']	= GetItemComponents( 'item_boots_of_bearing' )[1]
 
-Item['item_wraith_pact']	= GetItemComponents( 'item_wraith_pact' )[1]
+-- Item['item_wraith_pact'] removed from game
 
 ---------- 7.33 NEW ITEMS ---------------
 Item["item_pavise"] 							= GetItemComponents( 'item_pavise' )[1]
@@ -789,6 +809,13 @@ Item["item_blood_grenade"] 						= GetItemComponents( 'item_blood_grenade' )[1]
 ---------- 7.35 NEW ITEMS ---------------
 Item["item_angels_demise"] 						= GetItemComponents( 'item_angels_demise' )[1] --绝刃
 Item["item_devastator"] 						= GetItemComponents( 'item_devastator' )[1] --圣斧
+
+---------- 7.41 NEW ITEMS ---------------
+Item["item_essence_distiller"]				= GetItemComponents( 'item_essence_distiller' )[1]
+Item["item_specialists_array"]				= GetItemComponents( 'item_specialists_array' )[1]
+Item["item_hydras_breath"]					= GetItemComponents( 'item_hydras_breath' )[1]
+Item["item_consecrated_wraps"]				= GetItemComponents( 'item_consecrated_wraps' )[1]
+Item["item_crellas_crozier"]				= GetItemComponents( 'item_crellas_crozier' )[1]
 
 --新自定义物品
 Item['item_new_1']	= GetItemComponents( 'item_new_1' )[1]

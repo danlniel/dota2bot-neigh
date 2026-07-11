@@ -630,6 +630,8 @@ function J.GetUltimateAbility( bot )
 end
 
 
+-- 7.41: Refresher Orb/Shard only refreshes ABILITIES, not items.
+-- This function checks if ult is on cooldown and we have enough mana for a double-cast.
 function J.CanUseRefresherShard( bot )
 
 	local ult = J.GetUltimateAbility( bot )
@@ -3579,6 +3581,136 @@ function J.CanIgnoreLowHp(bot)
 	or J.GetModifierTime(bot, 'modifier_oracle_false_promise_timer') > 0.6
 end
 
+-- Per-bot chase fatigue tracking.
+-- NOTE: Each bot runs in its own Lua sandbox, so module-level state is per-bot only.
+-- Cross-bot coordination uses Valve API (GetAttackTarget, GetActiveMode) not shared Lua state.
+
+-- Score an enemy for target prioritization. Higher score = better target.
+-- Uses Valve API for cross-bot coordination (ally:GetAttackTarget()).
+-- Per-bot state (chase fatigue) stored on bot handle to survive across ticks.
+function J.ScoreEnemyTarget(bot, enemy, alliesNearby)
+	if not J.IsValidHero(enemy) or not J.CanBeAttacked(enemy) or J.IsSuspiciousIllusion(enemy) then
+		return -1
+	end
+	if J.CannotBeKilled(bot, enemy) then return -1 end
+	if J.HasForbiddenModifier(enemy) then return -1 end
+
+	-- Skip enemies in dangerous defensive states
+	if enemy:HasModifier('modifier_abaddon_borrowed_time')
+	or enemy:HasModifier('modifier_item_aeon_disk_buff')
+	or enemy:HasModifier('modifier_ursa_enrage')
+	or enemy:HasModifier('modifier_troll_warlord_battle_trance')
+	or enemy:HasModifier('modifier_winter_wyvern_cold_embrace')
+	then
+		return -1
+	end
+
+	local score = 0
+	local dist = GetUnitToUnitDistance(bot, enemy)
+	local enemyHP = J.GetHP(enemy)
+
+	-- 1. Killability: low HP enemies are highest priority
+	score = score + (1 - enemyHP) * 50
+
+	-- 2. Offensive threat: dangerous enemies should be dealt with
+	local offPower = enemy:GetRawOffensivePower()
+	score = score + math.min(offPower / 100, 20)
+
+	-- 3. Distance penalty: prefer closer targets
+	score = score - (dist / 200)
+
+	-- 4. Ally focus bonus: query Valve API for what allies are attacking (works cross-sandbox)
+	local allyAttackingCount = 0
+	if alliesNearby then
+		for _, ally in pairs(alliesNearby) do
+			if J.IsValidHero(ally) and ally ~= bot then
+				local allyTarget = ally:GetAttackTarget()
+				if allyTarget == enemy then
+					allyAttackingCount = allyAttackingCount + 1
+				end
+			end
+		end
+	end
+	score = score + allyAttackingCount * 12
+
+	-- 5. Core/support priority: prefer killing supports (squishier, high-value disables)
+	--    but also weight high-threat cores that are low HP
+	if J.IsCore(enemy) then
+		score = score + 5  -- slight bonus for removing core damage
+	else
+		score = score + 8  -- supports are easier kills, remove their disables
+	end
+
+	-- 6. Chase fatigue: per-bot tracking stored on bot handle
+	if bot._chaseFatigue == nil then bot._chaseFatigue = {} end
+	local enemyID = enemy:GetPlayerID()
+	if enemyID and bot._chaseFatigue[enemyID] then
+		local fatigue = bot._chaseFatigue[enemyID]
+		local chaseDuration = DotaTime() - fatigue.startTime
+		-- If chasing for over 4 seconds and enemy HP hasn't dropped much, apply penalty
+		if chaseDuration > 4 and enemyHP > 0.5 then
+			score = score - chaseDuration * 2
+		end
+		-- If enemy is moving away (distance increasing), more penalty
+		if fatigue.lastDist and dist > fatigue.lastDist + 50 then
+			score = score - 8
+		end
+	end
+
+	-- 7. Bonus if enemy is dealing damage to us — don't ignore threats hitting us
+	if bot:WasRecentlyDamagedByHero(enemy, 2.0) then
+		score = score + 18
+	end
+
+	-- 8. Blade mail penalty
+	if J.GetModifierTime(enemy, "modifier_item_blade_mail_reflect") > 0.2 then
+		score = score - 30
+	end
+
+	return score
+end
+
+-- Pick the best target for coordinated focus. Returns the best enemy to attack, or nil.
+-- Cross-bot coordination happens naturally: all bots running the same scoring algorithm
+-- with the same Valve API inputs (ally:GetAttackTarget()) will converge on the same target.
+function J.GetBestTeamTarget(bot, enemyHeroes, allyHeroes)
+	if not enemyHeroes or #enemyHeroes == 0 then return nil end
+
+	local bestTarget = nil
+	local bestScore = -999
+
+	for _, enemy in pairs(enemyHeroes) do
+		local score = J.ScoreEnemyTarget(bot, enemy, allyHeroes)
+		if score > bestScore then
+			bestScore = score
+			bestTarget = enemy
+		end
+	end
+
+	-- Update per-bot chase fatigue tracking
+	if bot._chaseFatigue == nil then bot._chaseFatigue = {} end
+	if bestTarget then
+		local targetID = bestTarget:GetPlayerID()
+		if targetID then
+			local dist = GetUnitToUnitDistance(bot, bestTarget)
+			if not bot._chaseFatigue[targetID] then
+				bot._chaseFatigue[targetID] = { startTime = DotaTime(), lastDist = dist }
+			else
+				bot._chaseFatigue[targetID].lastDist = dist
+			end
+		end
+	end
+
+	-- Clean up stale fatigue entries
+	for id, fatigue in pairs(bot._chaseFatigue) do
+		if DotaTime() - fatigue.startTime > 10 then
+			bot._chaseFatigue[id] = nil
+		end
+	end
+
+	return bestTarget
+end
+
 function J.CanBeAttacked( unit )
 	return  unit ~= nil
 			and not J.HasForbiddenModifier( unit )
@@ -5491,11 +5623,18 @@ function J.AdjustLocationWithOffsetTowardsFountain(loc, distance)
 end
 
 function J.IsInLaningPhase()
-	return (
-		(J.IsModeTurbo() and DotaTime() < 8 * 60)
-		or DotaTime() < 12 * 60
-	)
-	and GetBot():GetNetWorth() < 5000
+	local nTime = DotaTime()
+	local bTurbo = J.IsModeTurbo()
+
+	-- Hard time floor: always laning phase before 8min (turbo) / 10min (normal)
+	if bTurbo and nTime < 8 * 60 then return true end
+	if not bTurbo and nTime < 10 * 60 then return true end
+
+	-- Soft extension: still laning up to 10min (turbo) / 14min (normal) if networth is low
+	if bTurbo and nTime < 10 * 60 and GetBot():GetNetWorth() < 8000 then return true end
+	if not bTurbo and nTime < 14 * 60 and GetBot():GetNetWorth() < 8000 then return true end
+
+	return false
 end
 
 function J.IsTormentor(nTarget)
@@ -5854,6 +5993,55 @@ function J.GetHumanPing()
 	return nil, ping
 end
 
+-- Chat a random message from a localization key, once per cooldown per bot
+-- ARDM stale hero detection. Call from any Think function to check if the
+-- script's cached bot handle is outdated.
+-- Returns: isStale (bool), freshBot (handle), freshName (string)
+--   isStale=true  → this script is for a dead hero from a past ARDM life, do nothing
+--   isStale=false → safe to proceed; freshBot/freshName are the current hero
+-- Uses two signals: name comparison (definitive) and IsHeroAlive (covers edge cases
+-- where GetBot() hasn't updated yet but the player already has a new alive hero).
+function J.IsStaleARDMHero(cachedBot, cachedName)
+	if GetGameMode() ~= GAMEMODE_ARDM then
+		return false, cachedBot, cachedName
+	end
+
+	local freshBot = GetBot()
+	local freshName = freshBot:GetUnitName()
+	local nPlayerID = cachedBot:GetPlayerID()
+
+	-- Check 1: name differs AND handle differs → definitely stale
+	if freshName ~= cachedName and freshBot ~= cachedBot then
+		return true, freshBot, freshName
+	end
+
+	-- Check 2: this bot is dead but the player's current hero is alive
+	-- (covers case where GetBot() hasn't switched yet but the player has a new hero)
+	if nPlayerID >= 0 and IsHeroAlive(nPlayerID) and not cachedBot:IsAlive() then
+		-- Only stale if the names also differ (if same name, might just be respawning)
+		if freshName ~= cachedName then
+			return true, freshBot, freshName
+		end
+	end
+
+	return false, freshBot, freshName
+end
+
+-- Push safety and defend priority logic moved to TS sources:
+-- aba_push.ts (GetPushDesireHelper) and aba_defend.ts (GetDefendDesireHelper)
+
+function J.ModeAnnounce(bot, locKey, cooldown)
+	local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
+	if bot.lastModeChatTime == nil then bot.lastModeChatTime = {} end
+	local lastTime = bot.lastModeChatTime[locKey] or -999
+	if GameTime() - lastTime < (cooldown or 30) then return end
+	bot.lastModeChatTime[locKey] = GameTime()
+	local msgs = Localization.Get(locKey)
+	if msgs ~= nil and #msgs > 0 then
+		bot:ActionImmediate_Chat(msgs[RandomInt(1, #msgs)], false)
+	end
+end
+
 function J.HasAbility(bot, abilityName)
 	for i = 0, 23
 	do
@@ -5886,29 +6074,32 @@ function J.IsHumanInLoc(vLoc, nRadius)
 end
 
 function J.GetCurrentRoshanLocation()
+	-- 7.41: Roshan's pit preference switched (day/night swap)
 	if J.CheckTimeOfDay() == 'day'
 	then
-		return J.Utils.RadiantRoshanLoc
-	else
 		return J.Utils.DireRoshanLoc
+	else
+		return J.Utils.RadiantRoshanLoc
 	end
 end
 
 function J.GetTormentorLocation(team)
+	-- 7.41: Tormentor's spawn preference switched (day/night swap)
 	if J.CheckTimeOfDay() == 'day'
 	then
-		return DireTormentorLoc
-	else
 		return RadiantTormentorLoc
+	else
+		return DireTormentorLoc
 	end
 end
 
 function J.GetTormentorWaitingLocation(team)
+	-- 7.41: Tormentor's spawn preference switched (day/night swap)
 	local timeOfday = J.CheckTimeOfDay()
 	if timeOfday == 'day' then
-		return Vector(-7041, 6796, 256)
-	else
 		return Vector(6792, -6815, 256)
+	else
+		return Vector(-7041, 6796, 256)
 	end
 end
 

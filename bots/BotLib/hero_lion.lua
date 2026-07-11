@@ -106,7 +106,6 @@ sRoleItemsBuyList['pos_2'] = {
     "item_aether_lens",
     "item_black_king_bar",--
     "item_shivas_guard",--
-	"item_ethereal_blade",--
     "item_aghanims_shard",
 	"item_octarine_core",--
     -- "item_sheepstick",--
@@ -402,21 +401,27 @@ function X.ConsiderQ()
 
 	--Farm
 	if J.IsFarming( bot )
-		and nSkillLV >= 3
-		and J.IsAllowedToSpam( bot, nManaCost )
+		and nSkillLV >= 2
+		and J.GetManaAfter( nManaCost ) > 0.3
 	then
-		if J.IsValid( botTarget )
-			and botTarget:GetTeam() == TEAM_NEUTRAL
-			and J.IsInRange( bot, botTarget, 1000 )
-			and bot:IsFacingLocation( botTarget:GetLocation(), 45 )
-			and ( botTarget:GetMagicResist() < 0.4 or nMP > 0.9 )
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
+		if #nNeutralCreeps >= 3
 		then
-			local nShouldHurtCount = nMP > 0.5 and 1 or 2
-			local locationAoE = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, 200, 0, 0 )
-			if ( locationAoE.count >= nShouldHurtCount )
+			local locationAoE = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, 0 )
+			if locationAoE.count >= 2
 			then
 				nTargetLocation = locationAoE.targetloc
 				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, "Q-打钱:"..locationAoE.count
+			end
+		end
+		local nLaneCreeps = bot:GetNearbyLaneCreeps( nCastRange, true )
+		if #nLaneCreeps >= 3
+		then
+			local locationAoE = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, 0 )
+			if locationAoE.count >= 3
+			then
+				nTargetLocation = locationAoE.targetloc
+				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, "Q-Farm:"..locationAoE.count
 			end
 		end
 	end
@@ -445,10 +450,10 @@ function X.ConsiderQ()
 
 
 	--Roshan
-	if bot:GetActiveMode() == BOT_MODE_ROSHAN
-		and bot:GetMana() >= 900
+	if J.IsDoingRoshan( bot )
+		and J.GetManaAfter( nManaCost ) > 0.3
 	then
-		if J.IsRoshan( botTarget ) and J.GetHP( botTarget ) > 0.15
+		if J.IsRoshan( botTarget )
 			and J.IsInRange( botTarget, bot, nCastRange )
 		then
 			nTargetLocation = botTarget:GetLocation()
@@ -480,6 +485,22 @@ function X.ConsiderQ()
 			then
 				nTargetLocation = npcEnemy:GetLocation()
 				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q-常规'
+			end
+		end
+	end
+
+	--Farming: use Earth Spike on neutral creeps
+	if J.IsFarming( bot )
+		and J.GetManaAfter( nManaCost ) > 0.3
+		and nSkillLV >= 2
+	then
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
+		if nNeutralCreeps ~= nil and #nNeutralCreeps >= 3
+		then
+			local locationAoE = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, 0 )
+			if locationAoE.count >= 3
+			then
+				return BOT_ACTION_DESIRE_HIGH, locationAoE.targetloc, 'Q-Farm neutrals'
 			end
 		end
 	end
@@ -964,9 +985,8 @@ function X.ConsiderR()
 	end
 
 	--roshan
-	if bot:GetActiveMode() == BOT_MODE_ROSHAN
-		and bot:GetMana() >= 1300
-		and bot:HasScepter()
+	if J.IsDoingRoshan( bot )
+		and J.GetManaAfter( nManaCost ) > 0.3
 	then
 		if J.IsRoshan( botTarget ) and J.GetHP( botTarget ) > 0.2
 			and J.IsInRange( bot, botTarget, nCastRange )

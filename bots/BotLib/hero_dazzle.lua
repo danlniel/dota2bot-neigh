@@ -81,6 +81,7 @@ sRoleItemsBuyList['pos_2'] = {
 sRoleItemsBuyList['pos_4'] = {
 	'item_priest_outfit',
 	"item_mekansm",
+	"item_essence_distiller",--
 	"item_glimmer_cape",
 	"item_aghanims_shard",
 	"item_guardian_greaves",
@@ -197,6 +198,16 @@ function X.SkillsComplement()
 	if isPhysicalBody then J.Utils.GameStates.dazzleNothl[bot:GetPlayerID()].body = bot end
 	if J.CanNotUseAbility( bot ) or bot:IsInvisible() or isPhysicalBody then return end
 
+	-- Re-fetch ability handles each tick
+	abilityQ = bot:GetAbilityByName( sAbilityList[1] )
+	abilityW = bot:GetAbilityByName( sAbilityList[2] )
+	abilityE = bot:GetAbilityByName( sAbilityList[3] )
+	abilityF = bot:GetAbilityByName( sAbilityList[5] )
+	abilityR = bot:GetAbilityByName( sAbilityList[6] )
+	NothlProjection = bot:GetAbilityByName("dazzle_nothl_projection")
+	NothlProjectionEnd = bot:GetAbilityByName("dazzle_nothl_projection_end")
+
+	-- Cache per-tick variables
 	nKeepMana = 400
 	aetherRange = 0
 	nLV = bot:GetLevel()
@@ -402,6 +413,24 @@ function X.ConsiderQ()
 	end
 
 
+	-- Lane creep farming: cast Q on enemy creeps when laning/pushing with 3+ creeps and enough mana
+	if ( J.IsLaning(bot) or J.IsPushing(bot) )
+		and nMP > 0.4
+		and #hEnemyList == 0
+	then
+		local nLaneCreeps = bot:GetNearbyLaneCreeps( nCastRange, true )
+		if #nLaneCreeps >= 3 then
+			local targetCreep = nLaneCreeps[1]
+			if J.IsValid( targetCreep )
+				and not targetCreep:HasModifier( "modifier_fountain_glyph" )
+			then
+				hCastTarget = targetCreep
+				sCastMotive = 'Q-farming creeps'
+				return BOT_ACTION_DESIRE_HIGH, hCastTarget, sCastMotive
+			end
+		end
+	end
+
 
 	--团战中对血量最低的敌人使用
 	if J.IsInTeamFight( bot, 1200 )
@@ -579,6 +608,24 @@ function X.ConsiderW()
 	local nInBonusEnemyList = J.GetAroundEnemyHeroList( nCastRange + 200 )
 	local hCastTarget = nil
 	local sCastMotive = nil
+
+	-- Preemptive grave: check if ally will die from incoming attack projectiles
+	for _, npcAlly in pairs( hAllyList )
+	do
+		if J.IsValidHero( npcAlly )
+			and J.IsInRange( bot, npcAlly, nCastRange + 200 )
+			and not npcAlly:HasModifier( 'modifier_dazzle_shallow_grave' )
+			and J.GetHP( npcAlly ) < 0.5
+		then
+			local nProjectileDamage = J.GetAttackProjectileDamageByRange( npcAlly, 1600 )
+			if nProjectileDamage > 0 and nProjectileDamage >= npcAlly:GetHealth()
+			then
+				hCastTarget = npcAlly
+				sCastMotive = "W-incoming projectile kill on:"..J.Chat.GetNormName( hCastTarget )
+				return BOT_ACTION_DESIRE_HIGH, hCastTarget, sCastMotive
+			end
+		end
+	end
 
 
 	for _, npcAlly in pairs( hAllyList )
@@ -805,7 +852,7 @@ function X.GetBestHealTarget( npcEnemy, nRadius )
 
 
 	for _, unit in pairs( allyUnit )
-	do 
+	do
 		if J.IsInRange( npcEnemy, unit, nRadius + 9 )
 			and unit:GetMaxHealth() - unit:GetHealth() > maxLostHealth
 		then

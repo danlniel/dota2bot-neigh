@@ -34,6 +34,32 @@ end
 	return nil
 end
 
+-- Returns a pair of bots (one per team) that share the same position
+-- and both need an item of the given tier. Used to give items to
+-- mirrored positions simultaneously so neither team gets an advantage.
+function NeutralItems:GetMatchedPairForTier(tier)
+	-- Build lookup: position -> bot, per team
+	local byPos = { [2] = {}, [3] = {} }
+	for team = 2, 3 do
+		for _, bot in ipairs(AllBots[team]) do
+			if bot.stats and bot.stats.role then
+				byPos[team][bot.stats.role] = bot
+			end
+		end
+	end
+	-- Find first position where both sides need this tier (pos 1 = carry first)
+	for pos = 1, 5 do
+		local radBot = byPos[2][pos]
+		local direBot = byPos[3][pos]
+		if radBot and direBot
+		and tier > (radBot.stats.neutralTier or 0)
+		and tier > (direBot.stats.neutralTier or 0) then
+			return radBot, direBot
+		end
+	end
+	return nil, nil
+end
+
 -- Gives a neutral item to a unit, returns name of previous item
 -- if there was one.
 function NeutralItems:CreateOnUnit(unit, item)
@@ -328,16 +354,24 @@ function NeutralItems:CloseBotFindTier(tier, team)
 end
 
 -- Sets all bots to find tier 1 items.
+-- Matched positions across teams get the SAME variance so they trigger at the same time.
 function NeutralItems:InitializeFindTimings()
+	-- Generate one variance per position (1-5) so both teams share the same timing
+	local posVariance = {}
+	for pos = 1, 5 do
+		posVariance[pos] = Utilities:GetIntegerVariance(Settings.neutralItems.variance)
+	end
+
 	for team = 2, 3 do
 		for _, bot in ipairs(AllBots[team]) do
 			if type(bot) == "table" then
-				local variance = Utilities:GetIntegerVariance(Settings.neutralItems.variance)
+				local pos = bot.stats.role or 1
+				local variance = posVariance[pos] or 0
 				local difficultyShift = NeutralItems:GetTimingDifficultyScaleShift(1)
-					bot.stats.neutralsFound = 0
-					bot.stats.neutralTiming = Settings.neutralItems.timings[1] + variance + difficultyShift
+				bot.stats.neutralsFound = 0
+				bot.stats.neutralTiming = Settings.neutralItems.timings[1] + variance + difficultyShift
 				if bot.stats.neutralTiming < 0 then bot.stats.neutralTiming = 0 end
-				local msg = bot.stats.name..': Initialized Neutral Timing for Tier 1: '..bot.stats.neutralTiming..' (shift: '..difficultyShift..', var: '..variance..')'
+				local msg = bot.stats.name..' (pos'..pos..'): Initialized Neutral Timing for Tier 1: '..bot.stats.neutralTiming..' (shift: '..difficultyShift..', var: '..variance..')'
 				Debug:Print(msg)
 			else
 				print('[ERROR] failed to process bot: '..tostring(bot)..', team: '..team)
@@ -389,28 +423,21 @@ end
 -- Computes the neutral item timing offset using the difficulty scale
 -- The value is a linear interpolation of target value at baseline difficulty of 1.0 vs. game default value
 --[[ At baseline of 0 seconds for tier 1 and...
--            difficulty 0, we'd have (420-0)*(1-0) resulting in a shift of 420 seconds (neutral matching game default)
-			difficulty 0.7, we'd have (420-0)*(1-0.7) resulting in a shift of 126 seconds (first neutral at 2 minutes)
-			difficulty 1.0, we'd have (420-0)*(1-1) resulting in a shift of 0 seconds
+	(7.41: Tier 1 neutrals now available from 0:00, timingsDefault[1] = 0)
+-            difficulty 0, we'd have (0-0)*(1-0) resulting in a shift of 0 seconds (neutral matching game default)
+			difficulty 1.0, we'd have (0-0)*(1-1) resulting in a shift of 0 seconds
 		At baseline of 3600 for tier 3 and ...
 -            difficulty 0, we'd have (1620-1020)*(1-0) resulting in a shift of 600 seconds (600+1020=1620=game default)
 			difficulty 0.7, we'd have (1620-1020)*(1-0.7) resulting in a shift of 180 seconds (180+1020=1200)
 
 	Rough reference using timings = {0, 420, 1020, 2020, 3600}:
-	| Tier          | 1         | 2    | 3    | 4    | 5    |
-	|---------------|-----------|------|------|------|------|
-	| 0 (base game) | 420       | 1020 | 1620 | 2020 | 3600 |
-	| 0.5           | 210       | 720  | 1320 | 2020 | 3600 |
-	| 0.7           | 126       | 600  | 1200 | 2020 | 3600 |
-	| 1             | 0         | 420  | 1020 | 2020 | 3600 |
-	| 1.5           | 0 (clamp) | 120  | 720  | 2020 | 3600 |
-
-	If we made the timing even more lenient than game default (e.g. tier 1 at 600 seconds), then the scaling
-	becomes inverted where higher difficulty the closer we are to our target timing.
-		at difficulty 0 we'd have (420-600)*(1-0) = -180 second shift resulting in tier 1 at 420 seconds
-		at difficulty 0.7 we'd have -180*0.3 = -54 seconds resulting in tier 1 at 546 seconds
-		at difficulty 1.0 we'd have -180*0 = 0 seconds resulting in tier 1 at 600 seconds
-		at difficulty 1.5 we'd have -180*-0.5 = 90 seconds resulting in tier 1 at 690 seconds
+	| Tier          | 1    | 2    | 3    | 4    | 5    |
+	|---------------|------|------|------|------|------|
+	| 0 (base game) | 0    | 1020 | 1620 | 2020 | 3600 |
+	| 0.5           | 0    | 720  | 1320 | 2020 | 3600 |
+	| 0.7           | 0    | 600  | 1200 | 2020 | 3600 |
+	| 1             | 0    | 420  | 1020 | 2020 | 3600 |
+	| 1.5           | 0    | 120  | 720  | 2020 | 3600 |
 --]]
 function NeutralItems:GetTimingDifficultyScaleShift(tier)
 	local timingDifficultyShift = (Settings.neutralItems.timingsDefault[tier] - Settings.neutralItems.timings[tier]) * (1 - math.min(Settings.difficultyScale, 2))

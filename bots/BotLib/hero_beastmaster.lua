@@ -15,10 +15,16 @@ local tTalentTreeList = {
 }
 
 local tAllAbilityBuildList = {
-						{1,2,2,1,1,6,1,2,2,4,6,4,4,4,6},--pos3
+						{1,2,2,1,1,6,1,2,2,4,6,4,4,4,6},--pos3 (Axes + Boar for lane pressure)
+						{2,4,2,4,2,6,2,4,4,1,6,1,1,1,6},--pos1/2 (Boar + Inner Beast for fighting)
 }
 
-local nAbilityBuildList = J.Skill.GetRandomBuild( tAllAbilityBuildList )
+local nAbilityBuildList
+if sRole == 'pos_1' or sRole == 'pos_2' then
+	nAbilityBuildList = tAllAbilityBuildList[2]
+else
+	nAbilityBuildList = tAllAbilityBuildList[1]
+end
 
 local nTalentBuildList = J.Skill.GetTalentBuild( tTalentTreeList )
 
@@ -126,7 +132,7 @@ X['sSellList'] = {
 
 	"item_assault",
 	"item_quelling_blade",
-	
+
 	"item_abyssal_blade",
 	"item_magic_wand",
 
@@ -147,10 +153,16 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
+-- Ability handles initialized at load time; re-fetched each tick in SkillsComplement for Aghs safety
 local WildAxes          = bot:GetAbilityByName('beastmaster_wild_axes')
-local CallOfTheWildBoar = bot:GetAbilityByName('beastmaster_call_of_the_wild_boar')
-local CallOfTheWildHawk = bot:GetAbilityByName('beastmaster_call_of_the_wild_hawk')
-local InnerBeast        = bot:GetAbilityByName('beastmaster_inner_beast')
+-- 7.41: Boar→Razorback, Hawk→Raptor. Use sAbilityList for resilience to name changes.
+local CallOfTheWildBoar = bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback')
+                          or bot:GetAbilityByName('beastmaster_summon_razorback')
+                          or (sAbilityList[2] and bot:GetAbilityByName(sAbilityList[2]))
+local CallOfTheWildHawk = bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor')
+                          or bot:GetAbilityByName('beastmaster_summon_raptors')
+                          or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
+-- local InnerBeast     -- 7.41: now innate, cannot be cast
 -- local DrumsOfSlom        = bot:GetAbilityByName('beastmaster_drums_of_slom')
 local PrimalRoar        = bot:GetAbilityByName('beastmaster_primal_roar')
 
@@ -167,6 +179,11 @@ local BlinkLocation
 local BlinkRoarDesire, BlinkRoarTarget
 local botTarget
 
+-- Cached per-tick variables
+local botHP
+local nAllyHeroes
+local nEnemyHeroes
+
 if bot.shouldBlink == nil then bot.shouldBlink = false end
 
 function X.SkillsComplement()
@@ -175,7 +192,22 @@ function X.SkillsComplement()
         return
     end
 
+    -- Re-fetch ability handles each tick for safety against Aghs upgrades
+    WildAxes = bot:GetAbilityByName('beastmaster_wild_axes')
+    CallOfTheWildBoar = bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback')
+                        or bot:GetAbilityByName('beastmaster_summon_razorback')
+                        or (sAbilityList[2] and bot:GetAbilityByName(sAbilityList[2]))
+    CallOfTheWildHawk = bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor')
+                        or bot:GetAbilityByName('beastmaster_summon_raptors')
+                        or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
+    PrimalRoar = bot:GetAbilityByName('beastmaster_primal_roar')
+
+    -- Cache per-tick variables
     botTarget = J.GetProperTarget(bot)
+    botHP = J.GetHP(bot)
+    nAllyHeroes = J.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE)
+    nEnemyHeroes = J.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE)
+
     BlinkRoarDesire, BlinkRoarTarget = X.ConsiderBlinkRoar()
     if BlinkRoarDesire > 0
     then
@@ -214,12 +246,13 @@ function X.SkillsComplement()
         return
     end
 
-    InnerBeastDesire = X.ConsiderInnerBeast()
-    if InnerBeastDesire > 0
-    then
-        bot:Action_UseAbility(InnerBeast)
-        return
-    end
+    -- Inner Beast is now innate (passive) as of 7.41, no longer castable
+    -- InnerBeastDesire = X.ConsiderInnerBeast()
+    -- if InnerBeastDesire > 0
+    -- then
+    --     bot:Action_UseAbility(InnerBeast)
+    --     return
+    -- end
 
     WildAxesDesire, WildAxesLocation = X.ConsiderWildAxes()
     if WildAxesDesire > 0
@@ -229,37 +262,16 @@ function X.SkillsComplement()
     end
 end
 
+-- Inner Beast is now innate (passive) as of 7.41, no longer castable
 function X.ConsiderInnerBeast()
-    if not J.CanCastAbility(InnerBeast)
-    then
-        return BOT_ACTION_DESIRE_NONE, 0
-    end
-
-    local nCastRange = 800
-    if J.IsInTeamFight(bot, nCastRange)
-	then
-        return BOT_ACTION_DESIRE_HIGH
-	end
-
-    if J.IsGoingOnSomeone(bot)
-	then
-        local nInRangeAlly = J.GetNearbyHeroes(bot,1000, false, BOT_MODE_NONE)
-
-		if J.IsValidTarget(botTarget)
-        and J.CanCastOnNonMagicImmune(botTarget)
-        and J.IsInRange(bot, botTarget, nCastRange)
-        and not J.IsSuspiciousIllusion(botTarget)
-		then
-            local nTargetInRangeAlly = J.GetNearbyHeroes(botTarget, 1000, false, BOT_MODE_NONE)
-
-            if nInRangeAlly ~= nil and nTargetInRangeAlly ~= nil
-            and #nInRangeAlly >= #nTargetInRangeAlly
-            then
-                return BOT_ACTION_DESIRE_HIGH
-            end
-		end
-	end
     return BOT_ACTION_DESIRE_NONE, 0
+end
+
+-- Helper: check if a target has aegis or WK reincarnation (not worth ulting)
+local function HasAegisOrReincarnation(unit)
+    if J.IsHaveAegis(unit) then return true end
+    if unit:HasModifier('modifier_skeleton_king_reincarnation') then return true end
+    return false
 end
 
 function X.ConsiderWildAxes()
@@ -270,12 +282,13 @@ function X.ConsiderWildAxes()
 
     local nCastRange = WildAxes:GetCastRange()
     local nCastPoint = WildAxes:GetCastPoint()
+    local nManaCost = WildAxes:GetManaCost()
     local nMana = bot:GetMana() / bot:GetMaxMana()
     local nRadius = WildAxes:GetSpecialValueInt('radius')
     local nDamage = WildAxes:GetSpecialValueInt('axe_damage')
 
-    local nEnemyHeroes = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
-    for _, enemyHero in pairs(nEnemyHeroes)
+    local nEnemyHeroesLocal = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
+    for _, enemyHero in pairs(nEnemyHeroesLocal)
     do
         if J.IsValidHero(enemyHero)
         and J.CanCastOnNonMagicImmune(enemyHero)
@@ -321,7 +334,9 @@ function X.ConsiderWildAxes()
             if nInRangeAlly ~= nil and nTargetInRangeAlly ~= nil
             and #nInRangeAlly >= #nTargetInRangeAlly
             then
-                return BOT_ACTION_DESIRE_HIGH, botTarget:GetExtrapolatedLocation(nCastPoint)
+                -- Offset target location away from bot for better axe coverage
+                local vTargetLoc = J.VectorAway(botTarget:GetLocation(), bot:GetLocation(), 350)
+                return BOT_ACTION_DESIRE_HIGH, vTargetLoc
             end
 		end
 	end
@@ -343,7 +358,7 @@ function X.ConsiderWildAxes()
 
             if nTargetInRangeAlly ~= nil
             and ((#nTargetInRangeAlly > #nInRangeAlly)
-                or (J.GetHP(bot) < 0.57 and bot:WasRecentlyDamagedByAnyHero(2.7)))
+                or (botHP < 0.57 and bot:WasRecentlyDamagedByAnyHero(2.7)))
             then
                 return BOT_ACTION_DESIRE_HIGH, nInRangeEnemy[1]:GetExtrapolatedLocation(nCastPoint)
             end
@@ -352,6 +367,12 @@ function X.ConsiderWildAxes()
 
     if (J.IsPushing(bot) or J.IsDefending(bot))
 	then
+        -- Mana reservation: don't waste mana on wave clear if low
+        if J.GetManaAfter(nManaCost) < 0.3
+        then
+            return BOT_ACTION_DESIRE_NONE, 0
+        end
+
 		local nLocationAoE = bot:FindAoELocation(true, false, bot:GetLocation(), nCastRange, nRadius, nCastPoint, 0)
 
         if nLocationAoE.count >= 4
@@ -368,6 +389,12 @@ function X.ConsiderWildAxes()
 
     if J.IsFarming(bot)
     then
+        -- Mana reservation: keep enough mana for combat abilities
+        if J.GetManaAfter(nManaCost) < 0.3
+        then
+            return BOT_ACTION_DESIRE_NONE, 0
+        end
+
         local nEnemyLanecreeps = bot:GetNearbyLaneCreeps(800, true)
 		local nLocationAoE = bot:FindAoELocation(true, false, bot:GetLocation(), 800, nRadius, 0, 0)
 
@@ -392,6 +419,12 @@ function X.ConsiderWildAxes()
 
     if J.IsLaning(bot)
 	then
+        -- Mana reservation: keep mana for harassment and fights
+        if J.GetManaAfter(nManaCost) < 0.3
+        then
+            return BOT_ACTION_DESIRE_NONE, 0
+        end
+
         local canKill = 0
         local creepList = {}
 		local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
@@ -399,19 +432,6 @@ function X.ConsiderWildAxes()
 
 		for _, creep in pairs(nEnemyLaneCreeps)
 		do
-			-- if J.IsValid(creep)
-			-- and (J.IsKeyWordUnit('ranged', creep) or J.IsKeyWordUnit('siege', creep) or J.IsKeyWordUnit('flagbearer', creep))
-			-- and creep:GetHealth() <= nDamage
-			-- then
-			-- 	local nCreepInRangeHero = creep:GetNearbyHeroes(500, false, BOT_MODE_NONE)
-
-			-- 	if nCreepInRangeHero ~= nil and #nCreepInRangeHero >= 1
-            --     and J.GetMP(bot) > 0.33
-			-- 	then
-			-- 		return BOT_ACTION_DESIRE_HIGH, creep:GetLocation()
-			-- 	end
-			-- end
-
             if J.IsValid(creep)
             and creep:GetHealth() <= nDamage
             then
@@ -599,7 +619,7 @@ function X.ConsiderCallOfTheWildHawk()
 
             if nTargetInRangeAlly ~= nil
             and ((#nTargetInRangeAlly > #nInRangeAlly)
-                or (J.GetHP(bot) < 0.57 and bot:WasRecentlyDamagedByAnyHero(2.7)))
+                or (botHP < 0.57 and bot:WasRecentlyDamagedByAnyHero(2.7)))
             then
                 return BOT_ACTION_DESIRE_HIGH
             end
@@ -619,8 +639,27 @@ function X.ConsiderPrimalRoar()
     local nDuration = PrimalRoar:GetSpecialValueInt('duration')
     local nDamage = PrimalRoar:GetSpecialValueInt('damage')
 
-    local nEnemyHeroes = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
-    for _, enemyHero in pairs(nEnemyHeroes)
+    local nEnemyHeroesLocal = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
+
+    -- HIGH PRIORITY: Cancel enemy TPs with Roar
+    for _, enemyHero in pairs(nEnemyHeroesLocal)
+    do
+        if J.IsValidHero(enemyHero)
+        and J.CanCastOnMagicImmune(enemyHero)
+        and J.CanCastOnTargetAdvanced(enemyHero)
+        and not J.IsSuspiciousIllusion(enemyHero)
+        and enemyHero:HasModifier('modifier_teleporting')
+        then
+            local fModifierTime = J.GetModifierTime(enemyHero, 'modifier_teleporting')
+            if fModifierTime > 0
+            then
+                return BOT_ACTION_DESIRE_HIGH, enemyHero
+            end
+        end
+    end
+
+    -- Interrupt enemy ultimates and kill fleeing targets
+    for _, enemyHero in pairs(nEnemyHeroesLocal)
     do
         if J.IsValidHero(enemyHero)
         and J.CanCastOnMagicImmune(enemyHero)
@@ -648,30 +687,68 @@ function X.ConsiderPrimalRoar()
         end
     end
 
+    -- Teamfight: pick the enemy that threatens us most instead of just strongest
 	if J.IsInTeamFight(bot, 1200)
 	then
-        local strongestTarget = J.GetStrongestUnit(nCastRange, bot, true, false, nDuration)
+        local bestTarget = nil
+        local highestThreat = 0
 
-        if strongestTarget == nil
-        then
-            strongestTarget = J.GetStrongestUnit(1199, bot, true, true, nDuration)
+        for _, enemyHero in pairs(nEnemyHeroesLocal)
+        do
+            if J.IsValidHero(enemyHero)
+            and J.CanCastOnMagicImmune(enemyHero)
+            and J.CanCastOnTargetAdvanced(enemyHero)
+            and J.GetHP(enemyHero) > 0.5
+            and not J.IsSuspiciousIllusion(enemyHero)
+            and not J.IsDisabled(enemyHero)
+            and not J.IsTaunted(enemyHero)
+            and not enemyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
+            and not enemyHero:HasModifier('modifier_enigma_black_hole_pull')
+            and not enemyHero:HasModifier('modifier_legion_commander_duel')
+            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+            and not enemyHero:HasModifier("modifier_stunned")
+            then
+                local threat = enemyHero:GetEstimatedDamageToTarget(true, bot, 5, DAMAGE_TYPE_ALL)
+
+                -- Deprioritize aegis/reincarnation targets if there are others
+                if HasAegisOrReincarnation(enemyHero) then
+                    threat = threat * 0.3
+                end
+
+                if threat > highestThreat then
+                    highestThreat = threat
+                    bestTarget = enemyHero
+                end
+            end
         end
 
-        if J.IsValidTarget(strongestTarget)
-        and J.CanCastOnMagicImmune(strongestTarget)
-        and J.CanCastOnTargetAdvanced(strongestTarget)
-        and J.GetHP(strongestTarget) > 0.5
-        and not J.IsSuspiciousIllusion(strongestTarget)
-        and not J.IsDisabled(strongestTarget)
-        and not J.IsTaunted(strongestTarget)
-        and not strongestTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
-        and not strongestTarget:HasModifier('modifier_enigma_black_hole_pull')
-        and not strongestTarget:HasModifier('modifier_legion_commander_duel')
-        and not strongestTarget:HasModifier('modifier_necrolyte_reapers_scythe')
-        and not strongestTarget:HasModifier("modifier_stunned")
-        then
-			return BOT_ACTION_DESIRE_HIGH, strongestTarget
-		end
+        -- Fallback to GetStrongestUnit if no threat-based target found
+        if bestTarget == nil then
+            local strongestTarget = J.GetStrongestUnit(nCastRange, bot, true, false, nDuration)
+            if strongestTarget == nil then
+                strongestTarget = J.GetStrongestUnit(1199, bot, true, true, nDuration)
+            end
+
+            if J.IsValidTarget(strongestTarget)
+            and J.CanCastOnMagicImmune(strongestTarget)
+            and J.CanCastOnTargetAdvanced(strongestTarget)
+            and J.GetHP(strongestTarget) > 0.5
+            and not J.IsSuspiciousIllusion(strongestTarget)
+            and not J.IsDisabled(strongestTarget)
+            and not J.IsTaunted(strongestTarget)
+            and not strongestTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
+            and not strongestTarget:HasModifier('modifier_enigma_black_hole_pull')
+            and not strongestTarget:HasModifier('modifier_legion_commander_duel')
+            and not strongestTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+            and not strongestTarget:HasModifier("modifier_stunned")
+            then
+                bestTarget = strongestTarget
+            end
+        end
+
+        if bestTarget ~= nil then
+            return BOT_ACTION_DESIRE_HIGH, bestTarget
+        end
 	end
 
     if J.IsGoingOnSomeone(bot)
@@ -680,6 +757,11 @@ function X.ConsiderPrimalRoar()
         local nInRangeAlly = J.GetNearbyHeroes(bot,800, false, BOT_MODE_NONE)
 
         local nInRangeEnemy = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
+
+        -- Prefer targets without aegis/reincarnation
+        local bestTarget = nil
+        local bestTargetHasAegis = true
+
         for _, enemyHero in pairs(nInRangeEnemy)
         do
             if J.IsValidTarget(enemyHero)
@@ -702,9 +784,18 @@ function X.ConsiderPrimalRoar()
                 and #nInRangeAlly >= #nTargetInRangeAlly
                 and ((J.GetHP(enemyHero) < 0.5 and #nInRangeAlly == 1) or (J.GetHP(enemyHero) > 0.5 and #nInRangeAlly > #nTargetInRangeAlly))
                 then
-                    return BOT_ACTION_DESIRE_HIGH, enemyHero
+                    local thisHasAegis = HasAegisOrReincarnation(enemyHero)
+                    -- Pick non-aegis target over aegis target; otherwise pick first valid
+                    if bestTarget == nil or (bestTargetHasAegis and not thisHasAegis) then
+                        bestTarget = enemyHero
+                        bestTargetHasAegis = thisHasAegis
+                    end
                 end
             end
+        end
+
+        if bestTarget ~= nil then
+            return BOT_ACTION_DESIRE_HIGH, bestTarget
         end
 	end
 

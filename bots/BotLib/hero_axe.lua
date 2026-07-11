@@ -295,6 +295,33 @@ function X.ConsiderQ()
 		end
 	end
 
+	--farming: taunt 3+ neutral creeps when healthy
+	if J.IsFarming( bot )
+		and #hEnemyList == 0
+		and nHP > 0.5
+		and J.GetManaAfter( nManaCost ) > 0.3
+	then
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nRadius - 50 )
+		if #nNeutralCreeps >= 3
+		then
+			return BOT_ACTION_DESIRE_HIGH
+		end
+	end
+
+	--Roshan: taunt Roshan to absorb hits
+	if bot:GetActiveMode() == BOT_MODE_ROSHAN
+		and J.GetManaAfter( nManaCost ) > 0.3
+		and nHP > 0.3
+	then
+		if J.IsRoshan( botTarget )
+			and not J.IsDisabled( botTarget )
+			and J.IsInRange( bot, botTarget, nRadius )
+			and J.IsAttacking( bot )
+		then
+			return BOT_ACTION_DESIRE_HIGH
+		end
+	end
+
 	return BOT_ACTION_DESIRE_NONE
 
 
@@ -427,7 +454,7 @@ function X.ConsiderW()
 	--打野时
 	if J.IsFarming( bot )
 		and nSkillLV >= 2
-		and J.IsAllowedToSpam( bot, nManaCost * 0.25 )
+		and J.GetManaAfter( nManaCost ) > 0.3
 	then
 		local neutralCreepList = bot:GetNearbyNeutralCreeps( nCastRange + 100 )
 
@@ -436,8 +463,6 @@ function X.ConsiderW()
 		if J.IsValid( targetCreep )
 			and not J.IsRoshan( targetCreep )
 			and not targetCreep:HasModifier( 'modifier_axe_battle_hunger_self' )
-			--and ( #neutralCreepList >= 2 or GetUnitToUnitDistance( targetCreep, bot ) <= 400 )
-			and ( targetCreep:GetMagicResist() < 0.3 )
 			and not J.CanKillTarget( targetCreep, bot:GetAttackDamage() * 2.88, DAMAGE_TYPE_PHYSICAL )
 		then
 			hCastTarget = targetCreep

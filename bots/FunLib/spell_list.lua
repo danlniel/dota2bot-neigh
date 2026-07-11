@@ -64,9 +64,9 @@ X['spells'] = {
     
     ['npc_dota_hero_beastmaster'] = {
         ['beastmaster_wild_axes'] = {weight = 0.4},
-        ['beastmaster_call_of_the_wild_boar'] = {weight = 1},
+        ['beastmaster_call_of_the_wild_razorback'] = {weight = 1},
         ['beastmaster_inner_beast'] = {weight = 1},
-        ['beastmaster_call_of_the_wild_hawk'] = {weight = 1},
+        ['beastmaster_call_of_the_wild_raptor'] = {weight = 1},
     },
     
     ['npc_dota_hero_bloodseeker'] = {
@@ -554,7 +554,8 @@ X['spells'] = {
     ['npc_dota_hero_obsidian_destroyer'] = {
         ['obsidian_destroyer_arcane_orb'] = {weight = 1},
         ['obsidian_destroyer_astral_imprisonment'] = {weight = 0.2},
-        ['obsidian_destroyer_equilibrium'] = {weight = 1},
+        ['obsidian_destroyer_essence_aura'] = {weight = 1},
+        ['obsidian_destroyer_objurgation'] = {weight = 0.8},
         ['obsidian_destroyer_sanity_eclipse'] = {weight = 0.5},
     },
 
@@ -787,7 +788,7 @@ X['spells'] = {
         ['spectre_spectral_dagger'] = {weight = 0.6},
         ['spectre_desolate'] = {weight = 1},
         ['spectre_dispersion'] = {weight = 1},
-        ['spectre_haunt_single'] = {weight = 1},
+        ['spectre_shadow_step'] = {weight = 1},
         ['spectre_haunt'] = {weight = 1},
         ['spectre_reality'] = {weight = 1},
     },
@@ -798,6 +799,16 @@ X['spells'] = {
         ['spirit_breaker_greater_bash'] = {weight = 1},
         ['spirit_breaker_planar_pocket'] = {weight = 0.7},
         ['spirit_breaker_nether_strike'] = {weight = 0.6},
+    },
+    
+    ['npc_dota_hero_largo'] = {
+        ['largo_catchy_lick'] = {weight = 0.3},
+        ['largo_frogstomp'] = {weight = 0.4},
+        ['largo_croak_of_genius'] = {weight = 0.4},
+        ['largo_amphibian_rhapsody'] = {weight = 1},
+        ['largo_song_fight_song'] = {weight = 1},
+        ['largo_song_double_time'] = {weight = 1},
+        ['largo_song_good_vibrations'] = {weight = 1},
     },
 
     ['npc_dota_hero_storm_spirit'] = {
@@ -853,7 +864,7 @@ X['spells'] = {
         ['tinker_laser'] = {weight = 0.3},
         ['tinker_heat_seeking_missile'] = {weight = 1},
         ['tinker_march_of_the_machines'] = {weight = 0.5},
-        ['tinker_defense_matrix'] = {weight = 0.1},
+        ['tinker_deploy_turrets'] = {weight = 0.1},
         ['tinker_warp_grenade'] = {weight = 0.6},
         ['tinker_keen_teleport'] = {weight = 0.6},
         ['tinker_rearm'] = {weight = 1},

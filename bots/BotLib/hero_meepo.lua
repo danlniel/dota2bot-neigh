@@ -15,7 +15,7 @@ local tTalentTreeList = {
 }
 
 local tAllAbilityBuildList = {
-						{2,3,6,1,2,2,2,3,3,6,3,1,1,1,6,6},--pos1,2
+						{2,3,6,1,2,2,2,3,3,6,3,1,1,1,6,6},--pos1,2 (ult at 3)
 }
 
 local nAbilityBuildList = J.Skill.GetRandomBuild( tAllAbilityBuildList )
@@ -33,7 +33,6 @@ sRoleItemsBuyList['pos_1'] = {
     "item_boots",
     "item_magic_wand",
     "item_power_treads",
-    "item_dragon_lance",
     "item_diffusal_blade",
     "item_aghanims_shard",
     "item_blink",
@@ -48,19 +47,60 @@ sRoleItemsBuyList['pos_1'] = {
     "item_travel_boots_2",--
 }
 
-sRoleItemsBuyList['pos_2'] = sRoleItemsBuyList['pos_1']
+sRoleItemsBuyList['pos_2'] = {
+    "item_tango",
+    "item_double_branches",
+    "item_quelling_blade",
 
-sRoleItemsBuyList['pos_3'] = sRoleItemsBuyList['pos_1']
+    "item_wraith_band",
+    "item_boots",
+    "item_magic_wand",
+    "item_power_treads",
+    "item_diffusal_blade",
+    "item_aghanims_shard",
+    "item_blink",
+    "item_skadi",--
+    "item_sheepstick",--
+    "item_ultimate_scepter",
+    "item_disperser",--
+    "item_ultimate_scepter_2",
+    "item_swift_blink",--
+    "item_moon_shard",
+    "item_travel_boots_2",--
+}
 
-sRoleItemsBuyList['pos_4'] = sRoleItemsBuyList['pos_1']
+sRoleItemsBuyList['pos_3'] = {
+    "item_tango",
+    "item_double_branches",
+    "item_quelling_blade",
 
-sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_1']
+    "item_wraith_band",
+    "item_boots",
+    "item_magic_wand",
+    "item_power_treads",
+    "item_diffusal_blade",
+    "item_aghanims_shard",
+    "item_blink",
+    "item_skadi",--
+    "item_ultimate_scepter",
+    "item_sheepstick",--
+    "item_disperser",--
+    "item_ultimate_scepter_2",
+    "item_swift_blink",--
+    "item_moon_shard",
+    "item_travel_boots_2",--
+}
+
+sRoleItemsBuyList['pos_4'] = sRoleItemsBuyList['pos_3']
+
+sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_3']
 
 X['sBuyList'] = sRoleItemsBuyList[sRole]
 
 X['sSellList'] = {
-	"item_nullifier",
-	"item_dragon_lance",
+	"item_wraith_band",
+	"item_quelling_blade",
+	"item_magic_wand",
 }
 
 if J.Role.IsPvNMode() or J.Role.IsAllShadow() then X['sBuyList'], X['sSellList'] = { 'PvN_mid' }, {} end
@@ -76,13 +116,50 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
+----------------------------------------------
+-- EarthBind deduplication across clones
+----------------------------------------------
+local function IsEarthBindCoveredByClone(location, radius)
+    local now = GameTime()
+    local checkRadius = radius * 1.5
+
+    for _, member in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES))
+    do
+        if member ~= bot
+        and J.IsValidHero(member)
+        and member:GetUnitName() == 'npc_dota_hero_meepo'
+        and member.earth_bind_cast ~= nil
+        and (now - member.earth_bind_cast.time) < 2.0
+        then
+            local dist = GetUnitToLocationDistance(bot, member.earth_bind_cast.location)
+            -- Use distance between the two cast locations
+            local dx = location.x - member.earth_bind_cast.location.x
+            local dy = location.y - member.earth_bind_cast.location.y
+            local castDist = math.sqrt(dx * dx + dy * dy)
+            if castDist < checkRadius then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function RecordEarthBindCast(location)
+    bot.earth_bind_cast = {
+        time = GameTime(),
+        location = location,
+    }
+end
+
+----------------------------------------------
+-- Ability handles (re-fetched in SkillsComplement)
+----------------------------------------------
 local EarthBind         = bot:GetAbilityByName('meepo_earthbind')
 local Poof              = bot:GetAbilityByName('meepo_poof')
--- local Ransack           = bot:GetAbilityByName('meepo_ransack')
 local Dig               = bot:GetAbilityByName('meepo_petrify')
 local MegaMeepo         = bot:GetAbilityByName('meepo_megameepo')
 local MegaMeepoFling    = bot:GetAbilityByName('meepo_megameepo_fling')
--- local DivideWeStand     = bot:GetAbilityByName('meepo_divided_we_stand')
 
 local EarthBindDesire, EarthBindLocation
 local PoofDesire, PoofTarget
@@ -92,45 +169,66 @@ local MegaMeepoFlingDesire, MegaMeepoFlingFlingTarget
 
 local Meepos = {}
 
+-- Cached per-tick variables
+local botTarget
+local botHP
+local nAllyHeroes
+local nEnemyHeroes
+local bAttacking
+
 function X.SkillsComplement()
     if J.CanNotUseAbility(bot) then return end
 
-    Meepos = J.GetMeepos()
+    -- Re-fetch ability handles each tick for safety
+    EarthBind      = bot:GetAbilityByName('meepo_earthbind')
+    Poof           = bot:GetAbilityByName('meepo_poof')
+    Dig            = bot:GetAbilityByName('meepo_petrify')
+    MegaMeepo      = bot:GetAbilityByName('meepo_megameepo')
+    MegaMeepoFling = bot:GetAbilityByName('meepo_megameepo_fling')
+
+    -- Cache per-tick variables
+    Meepos       = J.GetMeepos()
+    botTarget    = J.GetProperTarget(bot)
+    botHP        = J.GetHP(bot)
+    nAllyHeroes  = J.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE)
+    nEnemyHeroes = J.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE)
+    bAttacking   = J.IsAttacking(bot)
 
     PoofDesire, PoofTarget = X.ConsiderPoof()
     if PoofDesire > 0
     then
-        J.SetQueuePtToINT(bot, true)
-        bot:Action_UseAbilityOnEntity(Poof, PoofTarget)
+        J.SetQueuePtToINT(bot, false)
+        bot:ActionQueue_UseAbilityOnEntity(Poof, PoofTarget)
         return
     end
 
     DigDesire = X.ConsiderDig()
     if DigDesire > 0
     then
-        bot:Action_UseAbility(Dig)
+        bot:ActionQueue_UseAbility(Dig)
         return
     end
 
     MegaMeepoDesire = X.ConsiderMegaMeepo()
     if MegaMeepoDesire > 0
     then
-        bot:Action_UseAbility(MegaMeepo)
+        bot:ActionQueue_UseAbility(MegaMeepo)
         return
     end
 
     EarthBindDesire, EarthBindLocation = X.ConsiderEarthBind()
     if EarthBindDesire > 0
     then
-        J.SetQueuePtToINT(bot, true)
-        bot:Action_UseAbilityOnLocation(EarthBind, EarthBindLocation)
+        J.SetQueuePtToINT(bot, false)
+        bot:ActionQueue_UseAbilityOnLocation(EarthBind, EarthBindLocation)
+        RecordEarthBindCast(EarthBindLocation)
         return
     end
 
     MegaMeepoFlingDesire, MegaMeepoFlingFlingTarget = X.ConsiderMegaMeepoFling()
     if MegaMeepoFlingDesire > 0
     then
-        bot:Action_UseAbilityOnEntity(MegaMeepoFling, MegaMeepoFlingFlingTarget)
+        bot:ActionQueue_UseAbilityOnEntity(MegaMeepoFling, MegaMeepoFlingFlingTarget)
         return
     end
 end
@@ -146,10 +244,9 @@ function X.ConsiderEarthBind()
 	local nRadius = EarthBind:GetSpecialValueInt('radius')
 	local nSpeed = EarthBind:GetSpecialValueInt('speed')
     local nModeDesire = bot:GetActiveModeDesire()
-    local botTarget = J.GetProperTarget(bot)
 
-    local nEnemyHeroes = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
-    for _, enemyHero in pairs(nEnemyHeroes)
+    local nEnemyHeroesInRange = J.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
+    for _, enemyHero in pairs(nEnemyHeroesInRange)
     do
         if J.IsValidHero(enemyHero)
         and J.CanCastOnNonMagicImmune(enemyHero)
@@ -157,7 +254,10 @@ function X.ConsiderEarthBind()
         and (enemyHero:IsChanneling() or J.IsCastingUltimateAbility(enemyHero))
         and not J.IsSuspiciousIllusion(enemyHero)
         then
-            return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+            local loc = enemyHero:GetLocation()
+            if not IsEarthBindCoveredByClone(loc, nRadius) then
+                return BOT_ACTION_DESIRE_HIGH, loc
+            end
         end
     end
 
@@ -166,7 +266,9 @@ function X.ConsiderEarthBind()
         local nLocationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, nRadius, nCastPoint, 0)
         if nLocationAoE.count >= 2
         then
-            return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+            if not IsEarthBindCoveredByClone(nLocationAoE.targetloc, nRadius) then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+            end
         end
     end
 
@@ -188,7 +290,10 @@ function X.ConsiderEarthBind()
         and #nInRangeAlly >= #nInRangeEnemy
         then
             local nDelay = (GetUnitToUnitDistance(bot, botTarget) / nSpeed) + nCastPoint
-            return BOT_ACTION_DESIRE_HIGH, botTarget:GetExtrapolatedLocation(nDelay)
+            local loc = botTarget:GetExtrapolatedLocation(nDelay)
+            if not IsEarthBindCoveredByClone(loc, nRadius) then
+                return BOT_ACTION_DESIRE_HIGH, loc
+            end
         end
 	end
 
@@ -200,7 +305,7 @@ function X.ConsiderEarthBind()
 
         if nInRangeAlly ~= nil and nInRangeEnemy
         and ((#nInRangeEnemy > #nInRangeAlly)
-            or (J.GetHP(bot) < 0.62 and bot:WasRecentlyDamagedByAnyHero(2)))
+            or (botHP < 0.62 and bot:WasRecentlyDamagedByAnyHero(2)))
         and J.IsValidHero(nInRangeEnemy[1])
         and J.CanCastOnNonMagicImmune(nInRangeEnemy[1])
         and J.IsInRange(bot, nInRangeEnemy[1], nCastRange)
@@ -209,12 +314,15 @@ function X.ConsiderEarthBind()
         and not nInRangeEnemy[1]:HasModifier('modifier_meepo_earthbind')
         then
             local nDelay = (GetUnitToUnitDistance(bot, nInRangeEnemy[1]) / nSpeed) + nCastPoint
-            return BOT_ACTION_DESIRE_HIGH, nInRangeEnemy[1]:GetExtrapolatedLocation(nDelay)
+            local loc = nInRangeEnemy[1]:GetExtrapolatedLocation(nDelay)
+            if not IsEarthBindCoveredByClone(loc, nRadius) then
+                return BOT_ACTION_DESIRE_HIGH, loc
+            end
         end
     end
 
-    local nAllyHeroes = J.GetNearbyHeroes(bot,nCastRange, false, BOT_MODE_NONE)
-    for _, allyHero in pairs(nAllyHeroes)
+    local nAllyHeroesInRange = J.GetNearbyHeroes(bot,nCastRange, false, BOT_MODE_NONE)
+    for _, allyHero in pairs(nAllyHeroesInRange)
     do
         local nAllyInRangeEnemy = J.GetNearbyHeroes(allyHero, nCastRange, true, BOT_MODE_NONE)
 
@@ -238,7 +346,10 @@ function X.ConsiderEarthBind()
             and not nAllyInRangeEnemy[1]:HasModifier('modifier_meepo_earthbind')
             then
                 local nDelay = (GetUnitToUnitDistance(bot, nAllyInRangeEnemy[1]) / nSpeed) + nCastPoint
-                return BOT_ACTION_DESIRE_HIGH, nAllyInRangeEnemy[1]:GetExtrapolatedLocation(nDelay + nCastPoint)
+                local loc = nAllyInRangeEnemy[1]:GetExtrapolatedLocation(nDelay + nCastPoint)
+                if not IsEarthBindCoveredByClone(loc, nRadius) then
+                    return BOT_ACTION_DESIRE_HIGH, loc
+                end
             end
         end
     end
@@ -255,6 +366,76 @@ function X.ConsiderPoof()
     local nRadius = Poof:GetSpecialValueInt('radius')
 	local nDamage = Poof:GetAbilityDamage()
 
+    ----------------------------------------------------------------
+    -- Poof-to-clone: Fountain escape
+    -- If HP < 0.5, not stunned, and a clone is near fountain, poof to it
+    ----------------------------------------------------------------
+    if botHP < 0.5
+    and J.IsRetreating(bot)
+    then
+        for _, meepo in pairs(Meepos)
+        do
+            if meepo ~= bot
+            and meepo:DistanceFromFountain() < 800
+            and not J.IsStunProjectileIncoming(bot, 400)
+            then
+                return BOT_ACTION_DESIRE_ABSOLUTE, meepo
+            end
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Poof-to-clone: Push/Defend lane front
+    -- If a clone is near lane front and bot is far (>3200), poof there
+    ----------------------------------------------------------------
+    if (J.IsPushing(bot) or J.IsDefending(bot))
+    and not J.IsRetreating(bot)
+    then
+        local laneFrontLoc = GetLaneFrontLocation(GetTeam(), bot:GetAssignedLane(), 0)
+
+        for _, meepo in pairs(Meepos)
+        do
+            if meepo ~= bot
+            and GetUnitToLocationDistance(meepo, laneFrontLoc) < 1200
+            and GetUnitToLocationDistance(bot, laneFrontLoc) > 3200
+            and botHP > 0.6
+            then
+                return BOT_ACTION_DESIRE_HIGH, meepo
+            end
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Poof-to-clone: Rescue retreating clone
+    -- If a clone is being chased, bot has good HP and allies >= enemies, poof to help
+    ----------------------------------------------------------------
+    if botHP > 0.5
+    and not J.IsRetreating(bot)
+    then
+        for _, meepo in pairs(Meepos)
+        do
+            if meepo ~= bot
+            and J.IsRetreating(meepo)
+            and meepo:WasRecentlyDamagedByAnyHero(2.0)
+            and J.GetHP(meepo) < 0.5
+            and GetUnitToUnitDistance(bot, meepo) > 1200
+            then
+                local cloneAlly = J.GetNearbyHeroes(meepo, 1200, false, BOT_MODE_NONE)
+                local cloneEnemy = J.GetNearbyHeroes(meepo, 1200, true, BOT_MODE_NONE)
+
+                if cloneAlly ~= nil and cloneEnemy ~= nil
+                and #cloneAlly >= #cloneEnemy
+                and #cloneEnemy >= 1
+                then
+                    return BOT_ACTION_DESIRE_HIGH, meepo
+                end
+            end
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Existing logic: Poof to clone that is going on someone
+    ----------------------------------------------------------------
     for _, meepo in pairs(Meepos)
     do
         local mTarget = meepo:GetAttackTarget()
@@ -314,7 +495,7 @@ function X.ConsiderPoof()
             end
         end
 
-        if J.GetHP(bot) < 0.3
+        if botHP < 0.3
         and J.IsRetreating(bot)
         and meepo ~= bot
         and meepo:DistanceFromFountain() < 500
@@ -330,7 +511,7 @@ function X.ConsiderPoof()
 
         if nInRangeAlly ~= nil and nInRangeEnemy
         and ((#nInRangeEnemy > #nInRangeAlly)
-            or (J.GetHP(bot) < 0.8 and bot:WasRecentlyDamagedByAnyHero(1.3)))
+            or (botHP < 0.8 and bot:WasRecentlyDamagedByAnyHero(1.3)))
         and J.IsValidHero(nInRangeEnemy[1])
         and J.CanCastOnNonMagicImmune(nInRangeEnemy[1])
         and J.IsInRange(bot, nInRangeEnemy[1], 1000)
@@ -359,7 +540,7 @@ function X.ConsiderPoof()
 
     if J.IsFarming(bot)
     then
-        if J.IsAttacking(bot)
+        if bAttacking
         then
             local nEnemyLanecreeps = bot:GetNearbyLaneCreeps(nRadius, true)
             if nEnemyLanecreeps ~= nil and #nEnemyLanecreeps >= 3
@@ -423,7 +604,7 @@ function X.ConsiderPoof()
 
 				if nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
 				and GetUnitToUnitDistance(creep, nInRangeEnemy[1]) <= 500
-                and J.GetHP(bot) > 0.5 and not bot:WasRecentlyDamagedByAnyHero(2.7)
+                and botHP > 0.5 and not bot:WasRecentlyDamagedByAnyHero(2.7)
 				then
 					return BOT_ACTION_DESIRE_HIGH, bot
 				end
@@ -440,7 +621,7 @@ function X.ConsiderPoof()
 		end
 	end
 
-	if J.GetHP(bot)
+	if botHP
     and not J.IsRetreating(bot)
     then
 		for _, meepo in pairs(Meepos)
@@ -459,7 +640,7 @@ function X.ConsiderPoof()
 		end
 	end
 
-	if J.GetHP(bot)
+	if botHP
     and not J.IsRetreating(bot)
     then
 		for _, meepo in pairs(Meepos)
@@ -468,7 +649,7 @@ function X.ConsiderPoof()
 			local nInRangeEnemy = J.GetNearbyHeroes(meepo, 324, true, BOT_MODE_NONE)
 
 			if nInRangeEnemy ~= nil
-            and J.GetHP(bot) - J.GetHP(meepo) > 0.2
+            and botHP - J.GetHP(meepo) > 0.2
             then
 				if J.IsValidHero(nInRangeEnemy[1])
                 and ((#Meepos >= #nInRangeEnemy)
@@ -492,7 +673,26 @@ function X.ConsiderDig()
         return BOT_ACTION_DESIRE_NONE
     end
 
-    if J.GetHP(bot) < 0.49
+    -- Modifier awareness: skip Dig when it won't help or interferes
+    if bot:HasModifier('modifier_doom_bringer_doom') then
+        -- Doom prevents all abilities/items; Dig heal is negligible, waste of time
+        return BOT_ACTION_DESIRE_NONE
+    end
+
+    if bot:HasModifier('modifier_oracle_false_promise_timer') then
+        -- False Promise delays damage; digging during it interferes with Oracle's save
+        return BOT_ACTION_DESIRE_NONE
+    end
+
+    if bot:HasModifier('modifier_ice_blast') then
+        -- Ice Blast prevents healing; only dig if we were recently hit (to dodge further damage)
+        if not bot:WasRecentlyDamagedByAnyHero(1.5) then
+            return BOT_ACTION_DESIRE_NONE
+        end
+        -- If recently damaged, still consider digging for invulnerability
+    end
+
+    if botHP < 0.49
     then
         return BOT_ACTION_DESIRE_HIGH
     end

@@ -42,6 +42,7 @@ sRoleItemsBuyList['pos_4'] = {
 
 	"item_magic_wand",
 	"item_arcane_boots",
+	"item_essence_distiller",--
 	"item_glimmer_cape",--
 	"item_aghanims_shard",
 	"item_guardian_greaves",--
@@ -449,23 +450,17 @@ function X.ConsiderQ()
 
 
 	--打野时
-	if J.IsFarming( bot ) and nSkillLV >= 3
-		and J.IsAllowedToSpam( bot, nManaCost )
+	if J.IsFarming( bot )
+		and J.GetManaAfter( nManaCost ) > 0.3
 		and #hEnemyList == 0
-		and #hAllyList <= 2
-		and not ( J.IsPushing( bot ) or J.IsDefending( bot ) )
 	then
-		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nCastRange + 400 )
-		if #nNeutralCreeps >= 2
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
+		if #nNeutralCreeps >= 3
 		then
 			for _, creep in pairs( nNeutralCreeps )
 			do
 				if J.IsValid( creep )
 					and J.IsInRange( bot, creep, nCastRange )
-					and bot:IsFacingLocation( creep:GetLocation(), 30 )
-					and creep:GetHealth() >= 600
-					and creep:GetMagicResist() < 0.3
-					and J.GetAroundTargetEnemyUnitCount( creep, nRadius * 2 ) >= 2
 				then
 					return BOT_ACTION_DESIRE_HIGH, creep, "Q-Farm:"..( #nNeutralCreeps )
 				end
@@ -473,6 +468,52 @@ function X.ConsiderQ()
 		end
 	end
 
+
+	--打野清兵(弹射)
+	if J.IsFarming( bot )
+		and J.GetManaAfter( nManaCost ) > 0.3
+		and #hEnemyList == 0
+	then
+		local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps( nCastRange, true )
+		if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 3
+		then
+			for _, creep in pairs( nEnemyLaneCreeps )
+			do
+				if J.IsValid( creep )
+					and J.CanBeAttacked( creep )
+					and J.IsInRange( bot, creep, nCastRange )
+				then
+					return BOT_ACTION_DESIRE_HIGH, creep, "Q-FarmCreeps:"..( #nEnemyLaneCreeps )
+				end
+			end
+		end
+	end
+
+
+	--打Roshan
+	if J.IsDoingRoshan( bot )
+	then
+		if J.IsRoshan( botTarget )
+			and J.CanCastOnNonMagicImmune( botTarget )
+			and J.IsInRange( bot, botTarget, nCastRange )
+			and J.IsAttacking( bot )
+			and J.GetManaAfter( nManaCost ) > 0.3
+		then
+			return BOT_ACTION_DESIRE_HIGH, botTarget, "Q-Roshan"
+		end
+	end
+
+	--打Tormentor
+	if J.IsDoingTormentor( bot )
+	then
+		if J.IsTormentor( botTarget )
+			and J.IsInRange( bot, botTarget, nCastRange )
+			and J.IsAttacking( bot )
+			and J.GetManaAfter( nManaCost ) > 0.3
+		then
+			return BOT_ACTION_DESIRE_HIGH, botTarget, "Q-Tormentor"
+		end
+	end
 
 
 	return BOT_ACTION_DESIRE_NONE

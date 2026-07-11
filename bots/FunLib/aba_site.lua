@@ -221,7 +221,7 @@ ____exports.nShopList = {
 }
 ____exports.top_power_rune = Vector(-1767, 1233, 0)
 ____exports.bot_power_rune = Vector(2597, -2014, 0)
-____exports.roshan = Vector(-2862, 2260, 0)
+____exports.roshan = Vector(2980, -2816, 0)
 ____exports.dire_ancient = Vector(5517, 4981, 0)
 ____exports.radiant_ancient = Vector(-5860, -5328, 0)
 ____exports.radiant_base = Vector(-7200, -6666, 0)
@@ -1165,9 +1165,6 @@ ____exports.ConsiderIsTimeToFarm.npc_dota_hero_centaur = function()
     local bot = GetBot()
     local botNetWorth = bot:GetNetWorth()
     if not HasItem(bot, "item_blink") and botNetWorth < 8000 then
-        return true
-    end
-    if not HasItem(bot, "item_hood_of_defiance") and botNetWorth < 10000 then
         return true
     end
     if not HasItem(bot, "item_pipe") and botNetWorth < 14000 then

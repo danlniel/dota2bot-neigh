@@ -111,46 +111,87 @@ local nAllyHeroes, nEnemyHeroes
 
 function X.MinionThink(hMinionUnit)
     local botHp = J.GetHP(bot)
-    local Control = hMinionUnit:GetAbilityByName('life_stealer_control')
-    if Control and not Control:IsHidden() and Control:IsFullyCastable()
-    then
-        bot:Action_UseAbility(Control)
+
+    -- Control ability: lets LS take over the infested creep
+    local hControl = hMinionUnit:GetAbilityByName('life_stealer_control')
+    if hControl and not hControl:IsHidden() and hControl:IsFullyCastable() then
+        hMinionUnit:Action_UseAbility(hControl)
         return
     end
 
-    local Consume = hMinionUnit:GetAbilityByName('life_stealer_consume')
-    if Consume and Consume:IsFullyCastable() then
-        if GetUnitToLocationDistance(hMinionUnit, J.GetTeamFountain()) < 1500 and J.GetHP(hMinionUnit) > 0.7 then
-            hMinionUnit:Action_UseAbility(Consume)
+    -- Consume (burst out of host)
+    local hConsume = hMinionUnit:GetAbilityByName('life_stealer_consume')
+    if hConsume and hConsume:IsFullyCastable() then
+        local nNearbyEnemy = hMinionUnit:GetNearbyHeroes(1200, true, BOT_MODE_NONE)
+        local bIsHeroHost = hMinionUnit:IsHero()
+
+        -- Track infest time for anti-stuck timeout
+        if not bot._infestTime then bot._infestTime = DotaTime() end
+        local nInfestDuration = DotaTime() - bot._infestTime
+
+        -- === CONSUME CONDITIONS (ordered by priority) ===
+
+        -- 1. Pop out at fountain (we're healed, go fight)
+        if botHp > 0.9 and hMinionUnit:HasModifier('modifier_fountain_aura_buff') then
+            hMinionUnit:Action_UseAbility(hConsume)
+            bot._infestTime = nil
             return
         end
-        if J.IsInTeamFight(bot, 900) and botHp > 0.75 then
-            hMinionUnit:Action_UseAbility(Consume)
+
+        -- 2. Teamfight burst: pop out for AoE damage when healthy and enemies present
+        if nNearbyEnemy and #nNearbyEnemy >= 2 and botHp > 0.7 then
+            hMinionUnit:Action_UseAbility(hConsume)
+            bot._infestTime = nil
             return
         end
-        if infestTargetType == 'creep' then
-            if (J.IsInTeamFight(bot, 1600) and botHp > 0.5) or botHp > 0.75 then
-                local nTeamFightLocation = J.GetTeamFightLocation(bot)
-                if nTeamFightLocation ~= nil then
-                    hMinionUnit:Action_MoveToLocation(nTeamFightLocation)
-                    return
-                end
+
+        -- 3. Fully healed: no reason to stay inside
+        if botHp > 0.95 and nInfestDuration > 2 then
+            hMinionUnit:Action_UseAbility(hConsume)
+            bot._infestTime = nil
+            return
+        end
+
+        -- 4. Creep host: move toward fight, pop when enemies are close
+        if not bIsHeroHost then
+            if nNearbyEnemy and #nNearbyEnemy > 0 and botHp > 0.5 then
+                -- Enemies in range and healthy enough — burst out for damage
+                hMinionUnit:Action_UseAbility(hConsume)
+                bot._infestTime = nil
+                return
+            end
+            -- Move creep toward teamfight or fountain
+            local nTeamFightLocation = J.GetTeamFightLocation(bot)
+            if nTeamFightLocation and botHp > 0.5 then
+                hMinionUnit:Action_MoveToLocation(nTeamFightLocation)
             else
                 hMinionUnit:Action_MoveToLocation(J.GetTeamFountain())
+            end
+            return
+        end
+
+        -- 5. Hero host: pop out when healed enough and action is happening
+        if bIsHeroHost then
+            -- Pop out to fight alongside ally when healthy
+            if botHp > 0.75 and nNearbyEnemy and #nNearbyEnemy > 0 then
+                hMinionUnit:Action_UseAbility(hConsume)
+                bot._infestTime = nil
                 return
             end
-        elseif infestTargetType == 'hero' and IsTeamPlayer(infestTarget:GetPlayerID()) then
-            if botHp > 0.5
-            and nEnemyHeroes and #nEnemyHeroes > 0
-            and (J.IsPushing(infestTarget) or J.IsAttacking(infestTarget)) then
-                hMinionUnit:Action_UseAbility(Consume)
+            -- Pop out when fully healed (even if no enemies — don't ride ally forever)
+            if botHp > 0.85 and nInfestDuration > 4 then
+                hMinionUnit:Action_UseAbility(hConsume)
+                bot._infestTime = nil
                 return
             end
-            if botHp > 0.75
-            and not (nEnemyHeroes and #nEnemyHeroes > 0) then
-                hMinionUnit:Action_UseAbility(Consume)
-                return
-            end
+        end
+
+        -- 6. Anti-stuck timeout: if inside for 15+ seconds, pop out regardless
+        -- (Infest heals 3-5% HP/sec, 15 sec = 45-75% HP restored — should be enough)
+        if nInfestDuration > 15 then
+            hMinionUnit:Action_UseAbility(hConsume)
+            bot._infestTime = nil
+            return
         end
     end
 
@@ -175,6 +216,12 @@ local bAttacking = false
 local botHP, botMaxMana, botManaRegen
 
 function X.SkillsComplement()
+    -- Re-fetch ability handles each tick for safety
+    Rage       = bot:GetAbilityByName('life_stealer_rage')
+    OpenWounds = bot:GetAbilityByName('life_stealer_open_wounds')
+    Infest     = bot:GetAbilityByName('life_stealer_infest')
+    Consume    = bot:GetAbilityByName('life_stealer_consume')
+
     bAttacking = J.IsAttacking(bot)
     botHP = J.GetHP(bot)
 	botMaxMana = bot:GetMaxMana()
@@ -193,11 +240,11 @@ function X.SkillsComplement()
         if J.CanNotUseAbility(bot) then return end
     end
 
-    InfestDesire, InfestTarget = X.ConsiderInfest()
-    if InfestDesire > 0 then
-        bot:Action_UseAbilityOnEntity(Infest, InfestTarget)
-        return
-    end
+    -- InfestDesire, InfestTarget = X.ConsiderInfest()
+    -- if InfestDesire > 0 then
+    --     bot:Action_UseAbilityOnEntity(Infest, InfestTarget)
+    --     return
+    -- end
 
     RageDesire = X.ConsiderRage()
     if RageDesire > 0 then
@@ -226,23 +273,39 @@ function X.ConsiderRage()
     local nInRangeEnemy = J.GetEnemiesNearLoc(bot:GetLocation(), 1200)
 
     if #nInRangeEnemy > 0 then
-        if J.IsNotAttackProjectileIncoming(bot, 350)
-        or J.IsWillBeCastUnitTargetSpell(bot, 500)
-        or J.IsWillBeCastPointSpell(bot, 500)
-        then
-            if not J.IsRealInvisible(bot) then
+        -- Spell/projectile dodge: only use Rage if recently damaged (don't burn it at full HP)
+        if bot:WasRecentlyDamagedByAnyHero(3.0) and not J.IsRealInvisible(bot) then
+            if J.IsNotAttackProjectileIncoming(bot, 350)
+            or J.IsWillBeCastUnitTargetSpell(bot, 500)
+            or J.IsWillBeCastPointSpell(bot, 500)
+            then
+                if (J.IsGoingOnSomeone(bot) and J.IsValidTarget(botTarget) and not J.IsInRange(bot, botTarget, bot:GetAttackRange()))
+                or (J.IsRetreating(bot) and botHP < 0.55) then
+                    return BOT_ACTION_DESIRE_HIGH
+                end
+            end
+
+            -- Stun-specific projectile dodge (higher priority)
+            if J.IsStunProjectileIncoming and J.IsStunProjectileIncoming(bot, 550) then
                 return BOT_ACTION_DESIRE_HIGH
             end
         end
 
         if (J.IsGoingOnSomeone(bot) or (J.IsRetreating(bot) and not J.IsRealInvisible(bot))) then
+            -- Rooted: use Rage only if target is out of attack range (going) or retreating
             if bot:IsRooted() then
-                return BOT_ACTION_DESIRE_HIGH
+                if J.IsRetreating(bot) then
+                    return BOT_ACTION_DESIRE_HIGH
+                elseif J.IsGoingOnSomeone(bot) and J.IsValidTarget(botTarget)
+                and not J.IsInRange(bot, botTarget, bot:GetAttackRange()) then
+                    return BOT_ACTION_DESIRE_HIGH
+                end
             end
 
             nInRangeEnemy = J.GetEnemiesNearLoc(bot:GetLocation(), 600)
             if bot:IsSilenced()
             and #nInRangeEnemy >= 2
+            and J.IsGoingOnSomeone(bot)
             and not bot:HasModifier('modifier_item_mask_of_madness_berserk')
             then
                 return BOT_ACTION_DESIRE_HIGH
@@ -257,7 +320,10 @@ function X.ConsiderRage()
                 return BOT_ACTION_DESIRE_HIGH
             end
 
-            if #nInRangeEnemy >= 3 and J.IsInTeamFight(bot, 1200) and #J.GetHeroesTargetingUnit(nInRangeEnemy, bot) then
+            -- FIX: #table is always truthy in Lua (returns a number). Use > 0 explicitly.
+            if #nInRangeEnemy >= 3 and J.IsInTeamFight(bot, 1200)
+            and #J.GetHeroesTargetingUnit(nInRangeEnemy, bot) > 0
+            and not J.IsRealInvisible(bot) then
                 return BOT_ACTION_DESIRE_HIGH
             end
         end

@@ -34,7 +34,7 @@ sRoleItemsBuyList['pos_4'] = {
 
     "item_boots",
     "item_magic_wand",
-    "item_urn_of_shadows",
+    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
     "item_arcane_boots",
     "item_pavise",
     "item_guardian_greaves",--
@@ -56,7 +56,7 @@ sRoleItemsBuyList['pos_5'] = {
 
     "item_boots",
     "item_magic_wand",
-    "item_urn_of_shadows",
+    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
     "item_tranquil_boots",
     "item_pavise",
     'item_pipe',--
@@ -84,7 +84,7 @@ sRoleItemsBuyList['pos_3'] = {
 	"item_shivas_guard",--
 	"item_cyclone",
 	"item_kaya_and_sange",--
-	"item_eternal_shroud",--
+	"item_bloodstone",--
 	"item_black_king_bar",--
 	"item_aghanims_shard",
 	"item_octarine_core",--

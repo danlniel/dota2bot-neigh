@@ -37,7 +37,6 @@ sRoleItemsBuyList['pos_2'] = {
 	"item_kaya_and_sange",--
 	"item_angels_demise",--
     "item_shivas_guard",--
-    "item_ethereal_blade",--
 	"item_ultimate_scepter",
     "item_ultimate_scepter_2",
     "item_moon_shard",
@@ -58,7 +57,6 @@ sRoleItemsBuyList['pos_3'] = {
 	"item_kaya_and_sange",--
 	"item_angels_demise",--
     "item_shivas_guard",--
-    "item_ethereal_blade",--
 	"item_ultimate_scepter",
     "item_ultimate_scepter_2",
     "item_moon_shard",
@@ -98,7 +96,7 @@ sRoleItemsBuyList['pos_5'] = {
     "item_blood_grenade",
 
     "item_boots",
-    "item_urn_of_shadows",
+    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
     "item_tranquil_boots",
 	"item_pipe",
     "item_spirit_vessel",--
@@ -138,15 +136,20 @@ end
 local Laser                 = bot:GetAbilityByName('tinker_laser')
 -- local HeatSeekingMissile    = bot:GetAbilityByName('tinker_heat_seeking_missile')
 local MarchOfTheMachines    = bot:GetAbilityByName('tinker_march_of_the_machines')
-local DefenseMatrix         = bot:GetAbilityByName('tinker_defense_matrix')
+-- 7.41: Defense Matrix may have been replaced by Deploy Turrets. Try both names.
+local DeployTurrets         = bot:GetAbilityByName('tinker_deploy_turrets')
+                              or bot:GetAbilityByName('tinker_defense_matrix')
+                              or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
 local WarpFlare             = bot:GetAbilityByName('tinker_warp_grenade')
 local KeenConveyance        = bot:GetAbilityByName('tinker_keen_teleport')
 local Rearm                 = bot:GetAbilityByName('tinker_rearm')
 
+local lastMarchCastTime     = -999
+
 local LaserDesire, LaserTarget
 -- local HeatSeekingMissileDesire
 local MarchOfTheMachinesDesire, MarchOfTheMachinesLocation
-local DefenseMatrixDesire, DefenseMatrixTarget
+local DeployTurretsDesire, DeployTurretsLocation
 local WarpFlareDesire, WarpFlareTarget
 local KeenConveyanceDesire, KeenConveyanceTargetLocation
 local KeenConveyanceCastTime = DotaTime()
@@ -175,6 +178,16 @@ function X.SkillsComplement()
         bot.healInBase = false
     end
 
+    -- Re-fetch ability handles each tick for safety against Aghs upgrades
+    Laser = bot:GetAbilityByName('tinker_laser')
+    MarchOfTheMachines = bot:GetAbilityByName('tinker_march_of_the_machines')
+    DeployTurrets = bot:GetAbilityByName('tinker_deploy_turrets')
+                    or bot:GetAbilityByName('tinker_defense_matrix')
+                    or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
+    WarpFlare = bot:GetAbilityByName('tinker_warp_grenade')
+    KeenConveyance = bot:GetAbilityByName('tinker_keen_teleport')
+    Rearm = bot:GetAbilityByName('tinker_rearm')
+
     if J.CanNotUseAbility(bot)
     or Rearm ~= nil and Rearm:IsInAbilityPhase()
     or KeenConveyance ~= nil and KeenConveyance:IsInAbilityPhase()
@@ -184,6 +197,7 @@ function X.SkillsComplement()
         return
     end
 
+    -- Cache per-tick variables
     botTarget = J.GetProperTarget(bot)
 
     if not J.IsGoingOnSomeone(bot)
@@ -209,10 +223,10 @@ function X.SkillsComplement()
         end
     end
 
-    DefenseMatrixDesire, DefenseMatrixTarget = X.ConsiderDefenseMatrix()
-    if DefenseMatrixDesire > 0
+    DeployTurretsDesire, DeployTurretsLocation = X.ConsiderDeployTurrets()
+    if DeployTurretsDesire > 0
     then
-        bot:Action_UseAbilityOnEntity(DefenseMatrix, DefenseMatrixTarget)
+        bot:Action_UseAbilityOnLocation(DeployTurrets, DeployTurretsLocation)
         return
     end
 
@@ -220,6 +234,7 @@ function X.SkillsComplement()
     if MarchOfTheMachinesDesire > 0
     then
         bot:Action_UseAbilityOnLocation(MarchOfTheMachines, MarchOfTheMachinesLocation)
+        lastMarchCastTime = DotaTime()
         return
     end
 
@@ -286,6 +301,36 @@ function X.ConsiderLaser()
         and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
         then
             return BOT_ACTION_DESIRE_HIGH, enemyHero
+        end
+    end
+
+    -- Teamfight: blind the highest DPS enemy
+    if J.IsInTeamFight(bot, 1200)
+    then
+        local bestTarget = nil
+        local bestDPS = 0
+
+        for _, enemyHero in pairs(nEnemyHeroes)
+        do
+            if J.IsValidHero(enemyHero)
+            and J.IsInRange(bot, enemyHero, nCastRange)
+            and J.CanCastOnNonMagicImmune(enemyHero)
+            and J.CanCastOnTargetAdvanced(enemyHero)
+            and not J.IsMeepoClone(enemyHero)
+            and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+            then
+                local currDPS = enemyHero:GetAttackDamage() * enemyHero:GetAttackSpeed()
+                if currDPS > bestDPS
+                then
+                    bestDPS = currDPS
+                    bestTarget = enemyHero
+                end
+            end
+        end
+
+        if bestTarget ~= nil
+        then
+            return BOT_ACTION_DESIRE_HIGH, bestTarget
         end
     end
 
@@ -473,6 +518,12 @@ function X.ConsiderMarchOfTheMachines()
     local nDuration = MarchOfTheMachines:GetSpecialValueInt('duration')
     local nDamage = MarchOfTheMachines:GetSpecialValueInt('damage')
 
+    -- Overlap prevention: don't recast if previous March is still covering the area
+    if DotaTime() < lastMarchCastTime + nDuration / 2
+    then
+        return BOT_ACTION_DESIRE_NONE, 0
+    end
+
     local nEnemyHeroes = J.GetNearbyHeroes(bot,1600, true, BOT_MODE_NONE)
 
     for _, enemyHero in pairs(nEnemyHeroes)
@@ -585,154 +636,110 @@ function X.ConsiderMarchOfTheMachines()
     return BOT_ACTION_DESIRE_NONE, 0
 end
 
-function X.ConsiderDefenseMatrix()
-    if not J.CanCastAbility(DefenseMatrix)
+function X.ConsiderDeployTurrets()
+    if not J.CanCastAbility(DeployTurrets)
     then
         return BOT_ACTION_DESIRE_NONE, nil
     end
 
-    local nCastRange = J.GetProperCastRange(false, bot, DefenseMatrix:GetCastRange())
+    local nCastRange = J.GetProperCastRange(false, bot, DeployTurrets:GetCastRange())
+    local nManaCost = DeployTurrets:GetManaCost()
+    local nEnemyHeroes = J.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)
 
-    local nAllyHeroes = J.GetNearbyHeroes(bot,1600, false, BOT_MODE_NONE)
-    local nEnemyHeroes = J.GetNearbyHeroes(bot,1600, true, BOT_MODE_NONE)
-
-	if J.IsGoingOnSomeone(bot)
+    -- Mana management: reserve mana for Rearm + TP combo (exception: always deploy in teamfight)
+    if not J.IsInTeamFight(bot, 1200)
+    and J.GetManaAfter(nManaCost) < 0.25
     then
-		if J.IsValidTarget(botTarget)
-        and J.IsInRange(bot, botTarget, bot:GetCurrentVisionRange())
-        and bot:WasRecentlyDamagedByAnyHero(2.5)
-        and not bot:IsInvulnerable()
-        and not bot:IsAttackImmune()
-        and not bot:HasModifier('modifier_tinker_defense_matrix')
-        then
-            return BOT_ACTION_DESIRE_HIGH, bot
-	    end
+        return BOT_ACTION_DESIRE_NONE, nil
     end
 
-	if J.IsRetreating(bot)
+    -- When going on someone: deploy turrets at the target's location
+    if J.IsGoingOnSomeone(bot)
+    then
+        if J.IsValidTarget(botTarget)
+        and J.IsInRange(bot, botTarget, nCastRange)
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+        end
+    end
+
+    -- When retreating: deploy turrets near approaching enemies to slow their chase
+    if J.IsRetreating(bot)
     and not J.IsRealInvisible(bot)
-	then
+    then
         for _, enemyHero in pairs(nEnemyHeroes)
         do
             if J.IsValidHero(enemyHero)
-            and (J.IsChasingTarget(enemyHero, bot)
-                or (J.IsAttacking(enemyHero) and enemyHero:GetAttackTarget() == bot))
-            and bot:WasRecentlyDamagedByAnyHero(2.5)
-            and (not J.IsSuspiciousIllusion(enemyHero) or J.GetHP(bot) < 0.55)
-            and not bot:HasModifier('modifier_tinker_defense_matrix')
+            and J.IsInRange(bot, enemyHero, nCastRange)
+            and J.IsChasingTarget(enemyHero, bot)
+            and not J.IsSuspiciousIllusion(enemyHero)
             then
-                return BOT_ACTION_DESIRE_HIGH, bot
-            end
-        end
-	end
-
-    if J.IsDoingRoshan(bot) or J.IsDoingTormentor(bot)
-    then
-        if (J.IsRoshan(botTarget) or J.IsTormentor(botTarget))
-        and J.IsInRange(bot, botTarget, 800)
-        and J.IsAttacking(bot)
-        then
-            if J.GetHP(bot) < 0.5
-            and not bot:HasModifier('modifier_abaddon_aphotic_shield')
-            and not bot:HasModifier('modifier_tinker_defense_matrix')
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot
-            end
-
-            local target = nil
-            local hp = 99999
-            for _, allyHero in pairs(nAllyHeroes)
-            do
-                if J.IsValidHero(allyHero)
-                and J.IsInRange(bot, allyHero, nCastRange)
-                and not allyHero:IsAttackImmune()
-                and not allyHero:IsInvulnerable()
-                and not J.IsSuspiciousIllusion(allyHero)
-                and not allyHero:HasModifier('modifier_abaddon_aphotic_shield')
-                and not allyHero:HasModifier('modifier_tinker_defense_matrix')
-                and hp > allyHero:GetHealth()
-                then
-                    hp = allyHero:GetHealth()
-                    target = allyHero
-                end
-            end
-
-            if target ~= nil
-            then
-                return BOT_ACTION_DESIRE_HIGH, target
+                return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
             end
         end
     end
 
-    nAllyHeroes = J.GetNearbyHeroes(bot,nCastRange, false, BOT_MODE_NONE)
-    for _, allyHero in pairs(nAllyHeroes)
-	do
-        if J.IsValidHero(allyHero)
-        and not allyHero:IsInvulnerable()
-        and not allyHero:IsIllusion()
-        and not allyHero:HasModifier('modifier_tinker_defense_matrix')
-        and (allyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
-            or allyHero:HasModifier('modifier_enigma_black_hole_pull')
-            or allyHero:HasModifier('modifier_legion_commander_duel'))
+    -- In teamfights: deploy turrets near the cluster of enemy heroes
+    if J.IsInTeamFight(bot, 1200)
+    then
+        local nLocationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, 400, 0, 0)
+        if nLocationAoE.count >= 2
         then
-            return BOT_ACTION_DESIRE_HIGH, allyHero
+            return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
         end
 
-        if J.IsValidHero(allyHero)
-        and J.IsDisabled(allyHero)
-        and not allyHero:IsMagicImmune()
-		and not allyHero:IsInvulnerable()
-        and not allyHero:IsIllusion()
-        and not allyHero:HasModifier('modifier_tinker_defense_matrix')
+        if J.IsValidHero(nEnemyHeroes[1])
+        and J.IsInRange(bot, nEnemyHeroes[1], nCastRange)
         then
-            return BOT_ACTION_DESIRE_HIGH, allyHero
+            return BOT_ACTION_DESIRE_HIGH, nEnemyHeroes[1]:GetLocation()
+        end
+    end
+
+    -- When pushing: deploy turrets near enemy towers
+    if J.IsPushing(bot)
+    then
+        local nEnemyTowers = bot:GetNearbyTowers(nCastRange, true)
+        if nEnemyTowers ~= nil and #nEnemyTowers >= 1
+        and J.IsValidBuilding(nEnemyTowers[1])
+        then
+            return BOT_ACTION_DESIRE_HIGH, nEnemyTowers[1]:GetLocation()
         end
 
-		if J.IsValidHero(allyHero)
-        and not allyHero:HasModifier('modifier_abaddon_aphotic_shield')
-        and not allyHero:HasModifier('modifier_item_solar_crest_armor_addition')
-        and not allyHero:HasModifier('modifier_tinker_defense_matrix')
-		and not allyHero:IsMagicImmune()
-		and not allyHero:IsInvulnerable()
-        and not allyHero:IsIllusion()
-        and J.IsNotSelf(bot, allyHero)
-		then
-            local nAllyInRangeEnemy = allyHero:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+        if #nEnemyLaneCreeps >= 3
+        and J.CanBeAttacked(nEnemyLaneCreeps[1])
+        then
+            return BOT_ACTION_DESIRE_HIGH, J.GetCenterOfUnits(nEnemyLaneCreeps)
+        end
+    end
 
-            if J.IsRetreating(allyHero)
-            and allyHero:WasRecentlyDamagedByAnyHero(3)
-            and not allyHero:IsIllusion()
-            then
-                if J.IsValidHero(nAllyInRangeEnemy[1])
-                and J.IsInRange(bot, nAllyInRangeEnemy[1], nCastRange)
-                and J.IsChasingTarget(nAllyInRangeEnemy[1], allyHero)
-                and not J.IsDisabled(nAllyInRangeEnemy[1])
-                and not J.IsSuspiciousIllusion(nAllyInRangeEnemy[1])
-                and not nAllyInRangeEnemy[1]:HasModifier('modifier_legion_commander_duel')
-                and not nAllyInRangeEnemy[1]:HasModifier('modifier_enigma_black_hole_pull')
-                and not nAllyInRangeEnemy[1]:HasModifier('modifier_faceless_void_chronosphere_freeze')
-                and not nAllyInRangeEnemy[1]:HasModifier('modifier_necrolyte_reapers_scythe')
-                then
-                    return BOT_ACTION_DESIRE_HIGH, allyHero
-                end
-            end
+    -- When defending: deploy turrets near approaching enemies
+    if J.IsDefending(bot)
+    then
+        if J.IsValidHero(nEnemyHeroes[1])
+        and J.IsInRange(bot, nEnemyHeroes[1], nCastRange)
+        then
+            return BOT_ACTION_DESIRE_HIGH, nEnemyHeroes[1]:GetLocation()
+        end
 
-			if J.IsGoingOnSomeone(allyHero)
-			then
-				local allyTarget = allyHero:GetAttackTarget()
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+        if #nEnemyLaneCreeps >= 3
+        and J.CanBeAttacked(nEnemyLaneCreeps[1])
+        then
+            return BOT_ACTION_DESIRE_HIGH, J.GetCenterOfUnits(nEnemyLaneCreeps)
+        end
+    end
 
-				if J.IsValidHero(allyTarget)
-				and J.IsInRange(allyHero, allyTarget, allyHero:GetAttackRange())
-                and not J.IsSuspiciousIllusion(allyTarget)
-                and not allyTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
-                and not allyTarget:HasModifier('modifier_enigma_black_hole_pull')
-                and not allyTarget:HasModifier('modifier_necrolyte_reapers_scythe')
-				then
-                    return BOT_ACTION_DESIRE_HIGH, allyHero
-				end
-			end
-		end
-	end
+    -- When doing Roshan or Tormentor: deploy turrets at the target
+    if J.IsDoingRoshan(bot) or J.IsDoingTormentor(bot)
+    then
+        if (J.IsRoshan(botTarget) or J.IsTormentor(botTarget))
+        and J.IsInRange(bot, botTarget, nCastRange)
+        and J.IsAttacking(bot)
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+        end
+    end
 
     return BOT_ACTION_DESIRE_NONE, nil
 end
@@ -1041,7 +1048,7 @@ function X.ConsiderRearm()
         if J.IsRoshan(botTarget)
         and J.IsInRange(bot, botTarget, 800)
         and J.IsAttacking(bot)
-        and (DefenseMatrix ~= nil and DefenseMatrix:GetCooldownTimeRemaining() > nChannelTime
+        and (DeployTurrets ~= nil and DeployTurrets:GetCooldownTimeRemaining() > nChannelTime
             or MarchOfTheMachines ~= nil and MarchOfTheMachines:GetCooldownTimeRemaining() > nChannelTime)
         then
             return BOT_ACTION_DESIRE_HIGH
@@ -1053,7 +1060,7 @@ function X.ConsiderRearm()
         if J.IsTormentor(botTarget)
         and J.IsInRange(bot, botTarget, 800)
         and J.IsAttacking(bot)
-        and (DefenseMatrix ~= nil and DefenseMatrix:GetCooldownTimeRemaining() > nChannelTime
+        and (DeployTurrets ~= nil and DeployTurrets:GetCooldownTimeRemaining() > nChannelTime
             or MarchOfTheMachines ~= nil and MarchOfTheMachines:GetCooldownTimeRemaining() > nChannelTime)
         then
             return BOT_ACTION_DESIRE_HIGH

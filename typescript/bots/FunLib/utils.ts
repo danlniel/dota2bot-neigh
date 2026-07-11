@@ -174,7 +174,7 @@ export const ImportantSpells: Record<string, string[]> = {
     [HeroName.ShadowFiend]: ["nevermore_requiem"],
     [HeroName.Slark]: ["slark_shadow_dance"],
     // sniper missing
-    [HeroName.Spectre]: ["spectre_haunt_single", "spectre_haunt"],
+    [HeroName.Spectre]: ["spectre_shadow_step", "spectre_haunt"],
     // templar_assassin missing
     [HeroName.Terrorblade]: ["terrorblade_metamorphosis", "terrorblade_sunder"],
     [HeroName.TrollWarlord]: ["troll_warlord_battle_trance"],
@@ -436,6 +436,9 @@ export function IsPingedByAnyPlayer(bot: Unit, pingTimeGap: number, minDistance:
 }
 
 export function SetCachedVars(key: string, value: any) {
+    // Not helpful for now. Disable it.
+    // return;
+
     if (!GameStates.cachedVars) {
         GameStates.cachedVars = {};
     }
@@ -444,6 +447,9 @@ export function SetCachedVars(key: string, value: any) {
 }
 
 export function GetCachedVars(key: string, withinTime: number) {
+    // Not helpful for now. Disable it.
+    // return null;
+
     if (!GameStates.cachedVars || !GameStates.cachedVars[key]) {
         return null;
     }
@@ -454,6 +460,9 @@ export function GetCachedVars(key: string, withinTime: number) {
 }
 
 export function CleanupCachedVars() {
+    // Not helpful for now. Disable it.
+    return;
+
     if (!GameStates.cachedVars) {
         return;
     }
@@ -691,7 +700,7 @@ export function GetNearbyAllyAverageHpPercent(bot: Unit, radius: number): number
             cnt++;
         }
     }
-    return cnt ? sum / cnt : 0;
+    return cnt != null ? sum / cnt : 0;
 }
 
 export function IsWithoutSpellShield(npcEnemy: Unit): boolean {
@@ -1235,7 +1244,7 @@ export function IsTeamPushingSecondTierOrHighGround(bot: Unit): boolean {
                 const teamMember = GetTeamMember(playerdId);
                 if (
                     teamMember !== null &&
-                    teamMember.GetNearbyHeroes(2000, false, BotMode.None).length > 2 &&
+                    teamMember.GetNearbyHeroes(2000, false, BotMode.None).length >= 2 &&
                     (IsNearEnemySecondTierTower(teamMember, 2000) ||
                         IsNearEnemyHighGroundTower(teamMember, 3000) ||
                         GetUnitToUnitDistance(teamMember, enemyAncient) < 3000)

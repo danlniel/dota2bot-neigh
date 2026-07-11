@@ -99,7 +99,7 @@ sRoleItemsBuyList['pos_5'] = {
     "item_solar_crest",--
 	"item_lotus_orb",--
 	"item_pipe",--
-	
+
 	"item_spirit_vessel",--
 	"item_ultimate_scepter",
 	"item_shivas_guard",--
@@ -138,13 +138,41 @@ local NaturalOrder          = bot:GetAbilityByName('elder_titan_natural_order')
 local EarthSplitter         = bot:GetAbilityByName('elder_titan_earth_splitter')
 
 local botTarget
+local nEnemyHeroes, nAllyHeroes
 
 local touchedUnits = { }
 bot.theAstralSpirit = nil
 local targetTouchUnits = nil
-local nEnemyHeroes, nAllyHeroes
+
+-- Helper: check if enemy is in Chronosphere or Black Hole
+local function IsInChronoOrBlackHole(enemy)
+	return enemy:HasModifier('modifier_faceless_void_chronosphere_freeze')
+		or enemy:HasModifier('modifier_enigma_black_hole_pull')
+end
+
+-- Helper: check if enemy is in Chrono/BH with enough remaining duration for combo
+local function IsInChronoOrBlackHoleWithDuration(enemy, minDuration)
+	local modifiers = {
+		'modifier_faceless_void_chronosphere_freeze',
+		'modifier_enigma_black_hole_pull',
+	}
+	for _, modName in pairs(modifiers) do
+		local modIdx = enemy:GetModifierByName(modName)
+		if modIdx ~= -1 then
+			local remaining = enemy:GetModifierRemainingDuration(modIdx)
+			if remaining >= minDuration then
+				return true
+			end
+		end
+	end
+	return false
+end
 
 function X.MinionThink(hMinionUnit)
+	-- Re-fetch ability handles each tick
+	EchoStomp          = bot:GetAbilityByName('elder_titan_echo_stomp')
+	ReturnAstralSpirit = bot:GetAbilityByName('elder_titan_return_spirit')
+
 	if J.Utils.IsUnitWithName(hMinionUnit, 'elder_titan_ancestral_spirit') and SpiritShouldBeAvailable() then
         bot.theAstralSpirit = hMinionUnit
 
@@ -169,6 +197,15 @@ end
 function X.SkillsComplement()
 	if J.CanNotUseAbility(bot) or bot:IsCastingAbility() or bot:IsChanneling() then return end
 
+	-- Re-fetch ability handles each tick
+	EchoStomp          = bot:GetAbilityByName('elder_titan_echo_stomp')
+	AstralSpirit       = bot:GetAbilityByName('elder_titan_ancestral_spirit')
+	MoveAstralSpirit   = bot:GetAbilityByName('elder_titan_move_spirit')
+	ReturnAstralSpirit = bot:GetAbilityByName('elder_titan_return_spirit')
+	NaturalOrder       = bot:GetAbilityByName('elder_titan_natural_order')
+	EarthSplitter      = bot:GetAbilityByName('elder_titan_earth_splitter')
+
+	-- Cache per-tick variables
     nEnemyHeroes = J.GetNearbyHeroes(bot, 1600, true)
     nAllyHeroes = J.GetNearbyHeroes(bot, 1600, false)
 
@@ -192,7 +229,7 @@ function X.SkillsComplement()
 		J.SetQueuePtToINT(bot, false)
 		bot:ActionQueue_UseAbilityOnLocation(EarthSplitter, EarthSplitterLocation)
     end
-	
+
     local castMoveAstralSpiritDesire, castMoveAstralSpiritLocation = ConsiderMoveAstralSpirit();
 	if castMoveAstralSpiritDesire > 0
     then
@@ -259,13 +296,39 @@ function ConsiderEarthSplitter()
 	local nCastRange = EarthSplitter:GetSpecialValueInt('AbilityCastRange')
     local crack_width = 300
     local crack_time = 3.14
-    
+
 	if J.IsInTeamFight(bot, 1600) or J.IsGoingOnSomeone(bot) or J.IsPushing(bot)
 	then
+		-- Check for enemies caught in Chronosphere/Black Hole with enough remaining duration
+		for _, npcEnemy in pairs(nEnemyHeroes) do
+			if J.IsValidHero(npcEnemy)
+			and J.CanCastOnNonMagicImmune(npcEnemy)
+			and J.IsInRange(bot, npcEnemy, nCastRange)
+			and IsInChronoOrBlackHoleWithDuration(npcEnemy, 1.8)
+			then
+				return BOT_ACTION_DESIRE_VERYHIGH, npcEnemy:GetLocation()
+			end
+		end
+
 		local locationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, crack_width, crack_time, 1500)
-        if #J.GetHeroesNearLocation(true, locationAoE.targetloc, 800) >= 3 then
+		local nHeroesInAoE = J.GetHeroesNearLocation(true, locationAoE.targetloc, 800)
+        if #nHeroesInAoE >= 3 then
             return BOT_ACTION_DESIRE_HIGH, locationAoE.targetloc
         end
+
+		-- Require at least 1 core hero when hitting 2+ enemies
+		if #nHeroesInAoE >= 2 then
+			local bHasCore = false
+			for _, enemy in pairs(nHeroesInAoE) do
+				if J.IsValidHero(enemy) and J.IsCore(enemy) then
+					bHasCore = true
+					break
+				end
+			end
+			if bHasCore then
+				return BOT_ACTION_DESIRE_HIGH, locationAoE.targetloc
+			end
+		end
 
         if J.IsValidHero( botTarget )
 			and #nEnemyHeroes >= #nAllyHeroes
@@ -306,7 +369,19 @@ function ConsiderEchoStomp(eveluator)
 		end
 	end
 
-	if #nInEchoRangeEnemyHeroes >= 3 then
+	-- Only stomp enemies that are disabled, slow, or caught in Chrono/Black Hole
+	local nStompableEnemies = 0
+	for _, npcEnemy in pairs(nInEchoRangeEnemyHeroes) do
+		if J.IsValidHero(npcEnemy)
+		and ( J.IsDisabled(npcEnemy)
+			or npcEnemy:GetCurrentMovementSpeed() <= 250
+			or IsInChronoOrBlackHole(npcEnemy) )
+		then
+			nStompableEnemies = nStompableEnemies + 1
+		end
+	end
+
+	if nStompableEnemies >= 3 then
         return BOT_ACTION_DESIRE_HIGH
 	end
 
@@ -316,6 +391,9 @@ function ConsiderEchoStomp(eveluator)
 			if J.IsValidHero(npcEnemy) and bot:WasRecentlyDamagedByHero(npcEnemy, 2)
 			then
 				if J.CanCastOnNonMagicImmune(npcEnemy)
+				and ( J.IsDisabled(npcEnemy)
+					or npcEnemy:GetCurrentMovementSpeed() <= 250
+					or IsInChronoOrBlackHole(npcEnemy) )
 				then
 					return BOT_ACTION_DESIRE_HIGH
 				end
@@ -327,12 +405,26 @@ function ConsiderEchoStomp(eveluator)
 	then
 		if J.IsValidHero(botTarget)
 		and J.IsChasingTarget(bot, botTarget)
-		and J.IsInRange(eveluator, botTarget, nRadius) then
+		and J.IsInRange(eveluator, botTarget, nRadius)
+		and ( J.IsDisabled(botTarget)
+			or botTarget:GetCurrentMovementSpeed() <= 250
+			or IsInChronoOrBlackHole(botTarget) )
+		then
 			return BOT_ACTION_DESIRE_HIGH
 		end
 
-		local locationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), 0, nRadius, 0, 0)
-		if locationAoE.count >= 3 then
+		-- AoE check: only count stompable enemies
+		local nAoEStompable = 0
+		for _, npcEnemy in pairs(nInEchoRangeEnemyHeroes) do
+			if J.IsValidHero(npcEnemy)
+			and ( J.IsDisabled(npcEnemy)
+				or npcEnemy:GetCurrentMovementSpeed() <= 250
+				or IsInChronoOrBlackHole(npcEnemy) )
+			then
+				nAoEStompable = nAoEStompable + 1
+			end
+		end
+		if nAoEStompable >= 3 then
 			return BOT_ACTION_DESIRE_HIGH
 		end
 	end

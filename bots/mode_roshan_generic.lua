@@ -21,11 +21,8 @@ local initDPSFlag = false
 local Roshan
 
 function GetDesire()
-	local cacheKey = 'GetRoshanDesire'..tostring(bot:GetPlayerID())
-	local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.5 * (1 + Customize.ThinkLess))
-	if cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
-	J.Utils.SetCachedVars(cacheKey, res)
+	if res > 0.6 then J.ModeAnnounce(bot, 'say_roshan', 30) end
 	return res
 end
 function GetDesireHelper()

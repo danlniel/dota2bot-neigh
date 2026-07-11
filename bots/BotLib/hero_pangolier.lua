@@ -142,6 +142,18 @@ local EndRollingThunderDesire
 function X.SkillsComplement()
     if J.CanNotUseAbility(bot) then return end
 
+    Swashbuckle       = bot:GetAbilityByName('pangolier_swashbuckle')
+    ShieldCrash       = bot:GetAbilityByName('pangolier_shield_crash')
+    RollUp            = bot:GetAbilityByName('pangolier_rollup')
+    EndRollUp         = bot:GetAbilityByName('pangolier_rollup_stop')
+    RollingThunder    = bot:GetAbilityByName('pangolier_gyroshell')
+    EndRollingThunder = bot:GetAbilityByName('pangolier_gyroshell_stop')
+
+    local botTarget = J.GetProperTarget(bot)
+    local botHP = J.GetHP(bot)
+    local nAllyHeroes = J.GetNearbyHeroes(bot, 1600, false, BOT_MODE_NONE)
+    local nEnemyHeroes = J.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)
+
     EndRollUpDesire = X.ConsiderEndRollUp()
     if EndRollUpDesire > 0
     then
@@ -213,7 +225,7 @@ function X.ConsiderSwashbuckle()
         and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
         and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
         then
-            if bot:IsFacingLocation(enemyHero:GetLocation(), 5)
+            if bot:IsFacingLocation(enemyHero:GetLocation(), 25)
             then
                 if J.IsInRange(bot, enemyHero, nDashRange)
                 then
@@ -251,7 +263,7 @@ function X.ConsiderSwashbuckle()
 
             if nInRangeAlly ~= nil and nTargetInRangeAlly ~= nil
             and #nInRangeAlly >= #nTargetInRangeAlly
-            and bot:IsFacingLocation(weakestTarget:GetLocation(), 5)
+            and bot:IsFacingLocation(weakestTarget:GetLocation(), 30)
             then
                 if J.IsInRange(bot, weakestTarget, nDashRange)
                 then
@@ -400,7 +412,7 @@ function X.ConsiderSwashbuckle()
         if canKill >= 2
         and nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
         and nLocationAoE.count >= 2
-        and bot:IsFacingLocation(nLocationAoE.targetloc, 5)
+        and bot:IsFacingLocation(nLocationAoE.targetloc, 15)
         then
             if GetUnitToLocationDistance(bot, nLocationAoE.targetloc) <= nDashRange
             then
@@ -486,7 +498,11 @@ function X.ConsiderShieldCrash()
         and bot:HasModifier('modifier_pangolier_gyroshell')
         and bot:IsFacingLocation(weakestTarget:GetLocation(), 5)
         then
-            return BOT_ACTION_DESIRE_HIGH
+            local vJumpLocation = weakestTarget:GetLocation()
+            if IsLocationPassable(vJumpLocation)
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
         end
 
         if J.IsValidTarget(weakestTarget)
