@@ -70,3 +70,4 @@ game/Customize
 # ML server runtime artifacts
 ml/data/
 ml/.env
+ml/__pycache__/
