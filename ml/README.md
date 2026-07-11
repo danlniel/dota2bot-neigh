@@ -34,11 +34,14 @@ the server.
    python3 ml/server.py
    ```
 2. Play games as usual. Snapshots accumulate in `ml/data/`.
-3. After a handful of games, train:
-   ```
-   python3 ml/train.py
-   ```
-4. Restart the server — it picks up `ml/model.json` automatically.
+3. **Automatic**: every `ML_REPORT_EVERY` completed games (default 2, 0 = off)
+   the server runs the balance report (`report.py`) AND retrains
+   (`train.py`), hot-reloading the new model in-process — no restart needed.
+   Results land in the server log and `data/report-latest.txt`
+   (history in `data/report-history.log`). A game "completes" when the next
+   game starts on the same client — that's when the clock reset is visible.
+4. Manual runs still work anytime: `python3 ml/report.py`,
+   `python3 ml/train.py` (+ restart to load the model).
 
 Knobs live in `bots/Customize/general.lua` under `Customize.ML`
 (enable/disable, server URL, API key, intervals, whether the server may change

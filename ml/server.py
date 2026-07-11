@@ -17,6 +17,9 @@ Run:  python3 ml/server.py       (stdlib only, no dependencies)
 """
 import json
 import os
+import subprocess
+import sys
+import threading
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,6 +31,9 @@ PORT = int(os.environ.get("ML_PORT", "5544"))
 API_KEY = os.environ.get("ML_API_KEY", "")
 DATA_DIR = os.environ.get("ML_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 MODEL_PATH = os.environ.get("ML_MODEL_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+# auto-run the balance report + retrain after this many completed games (0 = off)
+REPORT_EVERY = int(os.environ.get("ML_REPORT_EVERY", "2"))
 
 
 class Policy:
@@ -105,12 +111,55 @@ class Policy:
         self.model = None
         self._last_adjust = {}     # client -> unix ts of last difficulty change
         self._director_state = {}  # client -> {"Radiant": nw, "Dire": nw, "ts": ...}
+        self._last_game_time = {}  # client -> last seen game clock (for boundary detection)
+        self._games_done = 0
+        self._auto_lock = threading.Lock()
         if os.path.exists(MODEL_PATH):
             with open(MODEL_PATH) as f:
                 self.model = json.load(f)
             print(f"[policy] loaded trained model from {MODEL_PATH}")
         else:
             print("[policy] no trained model found, using heuristic baseline")
+
+    # ---- automation: report + retrain every N completed games ------------
+    def note_game_boundary(self, client: str, game_time: float):
+        """A game-clock reset on a client means its previous game finished."""
+        last = self._last_game_time.get(client)
+        self._last_game_time[client] = game_time
+        if last is not None and game_time < last - 60 and last > 300:
+            self._games_done += 1
+            print(f"[auto] game completed on {client} ({self._games_done}/{REPORT_EVERY} until report)")
+            if REPORT_EVERY > 0 and self._games_done >= REPORT_EVERY:
+                self._games_done = 0
+                threading.Thread(target=self._report_and_retrain, daemon=True).start()
+
+    def _report_and_retrain(self):
+        if not self._auto_lock.acquire(blocking=False):
+            return  # a run is already in progress
+        try:
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            report = subprocess.run(
+                [sys.executable, os.path.join(HERE, "report.py")],
+                capture_output=True, text=True, timeout=120).stdout
+            print(f"[auto] balance report ({stamp}):\n{report}")
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(os.path.join(DATA_DIR, "report-latest.txt"), "w") as f:
+                f.write(f"generated {stamp}\n\n{report}")
+            with open(os.path.join(DATA_DIR, "report-history.log"), "a") as f:
+                f.write(f"\n===== {stamp} =====\n{report}")
+
+            trained = subprocess.run(
+                [sys.executable, os.path.join(HERE, "train.py")],
+                capture_output=True, text=True, timeout=300).stdout
+            print(f"[auto] trainer:\n{trained}")
+            if "wrote" in trained and os.path.exists(MODEL_PATH):
+                with open(MODEL_PATH) as f:
+                    self.model = json.load(f)
+                print("[auto] new model loaded in-process (no restart needed)")
+        except Exception as e:  # automation must never take the server down
+            print(f"[auto] report/retrain failed: {e}")
+        finally:
+            self._auto_lock.release()
 
     def director(self, snapshot: dict, client: str = "?") -> dict:
         """Adaptive difficulty controller.
@@ -137,6 +186,7 @@ class Policy:
         self._director_state[client] = {
             "Radiant": side_nw["Radiant"], "Dire": side_nw["Dire"], "ts": time.time(),
         }
+        self.note_game_boundary(client, snapshot.get("game_time", 0))
 
         difficulty = snapshot.get("difficulty", 5)
         directive = {"difficulty": difficulty, "announce": False}

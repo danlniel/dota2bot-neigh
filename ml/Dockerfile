@@ -8,7 +8,8 @@ COPY server.py train.py report.py ./
 ENV ML_HOST=0.0.0.0 \
     ML_PORT=5544 \
     ML_DATA_DIR=/data \
-    ML_MODEL_PATH=/data/model.json
+    ML_MODEL_PATH=/data/model.json \
+    PYTHONUNBUFFERED=1
 VOLUME /data
 EXPOSE 5544
 
