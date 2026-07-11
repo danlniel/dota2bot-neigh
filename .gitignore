@@ -66,3 +66,7 @@ dist
 
 # user's personal customized settings
 game/Customize
+
+# ML server runtime artifacts
+ml/data/
+ml/.env

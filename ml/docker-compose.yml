@@ -6,8 +6,8 @@ services:
     ports:
       - "5544:5544"
     environment:
-      # set a key if the server is reachable from outside your LAN;
-      # players put the same value in Customize.ML.Api_Key
-      ML_API_KEY: ""
+      # set in ml/.env (never commit it); players put the same value
+      # in Customize.ML.Api_Key
+      ML_API_KEY: "${ML_API_KEY:-}"
     volumes:
       - ./data:/data
