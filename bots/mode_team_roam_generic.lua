@@ -68,6 +68,8 @@ local function CapForLanePush(desire)
 end
 
 function GetDesire()
+    J.MLBridge.Think(bot)
+
     local cacheKey = 'GetTeamRoamDesire'..tostring(bot:GetPlayerID())
     local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.6 * (1 + Customize.ThinkLess))
     if cachedVar ~= nil then return cachedVar end
@@ -223,15 +225,22 @@ function ConsiderHelpAlly()
         local nInRangeAlly = J.GetAlliesNearLoc(nClosestAlly:GetLocation(), 1200)
         local nInRangeEnemy = J.GetEnemiesNearLoc(nClosestAlly:GetLocation(), 1600)
 
+        local tThreats = {}
         for _, enemyHero in pairs(nInRangeEnemy) do
             if J.IsValidHero(enemyHero)
             and GetUnitToUnitDistance(enemyHero, nClosestAlly) <= 1600
             and (#nInRangeAlly + 1 >= #nInRangeEnemy) then
                 if (enemyHero:GetAttackTarget() == nClosestAlly or J.IsChasingTarget(enemyHero, nClosestAlly))
                 or nClosestAlly:WasRecentlyDamagedByHero(enemyHero, 2.5) then
-                    return enemyHero, true
+                    table.insert(tThreats, enemyHero)
                 end
             end
+        end
+        if #tThreats > 0 then
+            -- go for the most killable attacker instead of the first one found
+            local nBestThreat = J.GetAttackableWeakestUnitFromList(bot, tThreats)
+            if nBestThreat ~= nil then return nBestThreat, true end
+            return tThreats[1], true
         end
     end
 
@@ -1212,15 +1221,22 @@ function X.ConsiderHelpWhenCoreIsTargeted()
         local nInRangeAlly = J.GetAlliesNearLoc(nClosestCore:GetLocation(), 1200)
         local nInRangeEnemy = J.GetEnemiesNearLoc(nClosestCore:GetLocation(), 1600)
 
+        local tThreats = {}
         for _, enemyHero in pairs(nInRangeEnemy) do
             if  J.IsValidHero(enemyHero)
             and GetUnitToUnitDistance(enemyHero, nClosestCore) <= 1600
             and (#nInRangeAlly + 1 >= #nInRangeEnemy) then
                 if (enemyHero:GetAttackTarget() == nClosestCore or J.IsChasingTarget(enemyHero, nClosestCore))
                 or nClosestCore:WasRecentlyDamagedByHero(enemyHero, 2.5) then
-                    return enemyHero, true
+                    table.insert(tThreats, enemyHero)
                 end
             end
+        end
+        if #tThreats > 0 then
+            -- go for the most killable attacker instead of the first one found
+            local nBestThreat = J.GetAttackableWeakestUnitFromList(bot, tThreats)
+            if nBestThreat ~= nil then return nBestThreat, true end
+            return tThreats[1], true
         end
     end
 

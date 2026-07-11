@@ -63,7 +63,10 @@ Customize.Dire_Heros = {
 Customize.Allow_Repeated_Heroes = false
 
 -- The max number of weak heroes allowed in a team the bots can pick.
-Customize.Weak_Hero_Cap = 0
+-- Note: 0 blocks weak-listed heroes entirely, INCLUDING human `!pick` commands
+-- and preset lineups (the cap check is `count >= cap`, and 0 >= 0 always).
+-- Keep at 1 to limit bots to one weak hero while leaving human picks working.
+Customize.Weak_Hero_Cap = 1
 
 -- The weak penalty curve for bots picking weak heroes:
 --   { type="linear", k=0.25 }         ->  penalty = max(0, 1 - k * (weakPicked/cap))
@@ -124,7 +127,53 @@ Customize.Fretbots = {
 -- Bots can become slow or dumb in reaction and decision making if you set this value to a higher number.
 -- When doing Local Host, you can potentially improve PC performance (FPS) by setting this to 1 to 10, which sacrifices some bot IQ/performance.
 -- This won't be very effective for FPS improvement because Valve has a lot of compute on their side that your PC have to handle for Local Hosting.
-Customize.ThinkLess = 0.5;
+Customize.ThinkLess = 0;
+
+-- Fight IQ: make bots smarter in fights via decision quality instead of Fretbots stat bonuses.
+-- All values have safe defaults; set Enable = false to restore original behavior.
+Customize.FightIQ = {
+    Enable = true,
+
+    -- Bots only commit to fights when their estimated team power exceeds the enemy's by this ratio.
+    -- 1.0 = original coin-flip behavior; higher = pickier, smarter engagements.
+    Commit_Margin = 1.05,
+
+    -- Team power weighting for ultimate availability (heroes level 6+ with a non-passive ultimate).
+    -- Ready ultimates swing fights; a hero with ult on cooldown is worth less in a fight.
+    Ult_Ready_Bonus = 1.12,
+    Ult_Down_Penalty = 0.88,
+
+    -- Enemies that are currently disabled (stunned/hexed/nightmared/taunted) count this much
+    -- toward enemy team power. Lower = bots punish picked-off or disabled targets harder.
+    Disabled_Power_Scale = 0.6,
+
+    -- Focus fire: prefer targets that allies are already attacking, that are disabled,
+    -- and judge "weakest" by armor-adjusted effective HP instead of raw HP.
+    Focus_Fire = true,
+}
+
+-- ML integration: connect the bots to a local model server (see ml/README.md).
+-- Run `python3 ml/server.py` before the game; without a server the bridge
+-- disables itself after a few attempts and static settings apply.
+Customize.ML = {
+    Enable = true,
+
+    -- Model server address. Local default; point at a shared server
+    -- (e.g. 'http://your-server:5544') to use a community-hosted model.
+    Server = 'http://127.0.0.1:5544',
+
+    -- Optional API key, must match the server's ML_API_KEY. Empty = no auth.
+    Api_Key = '',
+
+    -- Seconds between game-state snapshots from the bots VM (FightIQ tuning + dataset).
+    Snapshot_Interval = 10,
+
+    -- Seconds between FretBots director updates (adaptive difficulty).
+    Director_Interval = 20,
+
+    -- Allow the server to change FretBots difficulty mid-game (rubber-band by model).
+    Allow_Difficulty_Control = true,
+}
 
 return Customize
 

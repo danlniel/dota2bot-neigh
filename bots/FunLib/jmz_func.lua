@@ -34,6 +34,21 @@ J.Skill = require( GetScriptDirectory()..'/FunLib/aba_skill' )
 J.Chat = require( GetScriptDirectory()..'/FunLib/aba_chat' )
 J.Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
+J.MLBridge = require(GetScriptDirectory()..'/FunLib/ml_bridge')
+
+-- Effective FightIQ config: live ML-server overrides win over static Customize
+-- values; nil when the feature is disabled. Used by fight evaluation and
+-- target selection below.
+local function GetFightIQ()
+	local mlIQ = J.MLBridge and J.MLBridge.GetEffectiveFightIQ()
+	if mlIQ ~= nil then
+		if mlIQ.Enable == false then return nil end
+		return mlIQ
+	end
+	local iq = J.Customize and J.Customize.FightIQ
+	if iq == nil or iq.Enable == false then return nil end
+	return iq
+end
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
@@ -3484,6 +3499,13 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
     local bestScore = math.huge
 	local attackRange = bot:GetAttackRange()
 
+	local iq = GetFightIQ()
+	local bFocusFire = iq ~= nil and iq.Focus_Fire ~= false
+	local tNearbyAllies = nil
+	if bFocusFire then
+		tNearbyAllies = J.GetAlliesNearLoc(bot:GetLocation(), 1600)
+	end
+
     for _, unit in pairs( unitList ) do
 		if J.IsValidTarget(unit) then
 			local hp = unit:GetHealth()
@@ -3505,7 +3527,29 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
 				local hpWeight = 0.7
 				local powerWeight = 0.3
 				local score = (hp * hpWeight) - (offensivePower * powerWeight) -- - math.min(1, attackRange / distance) * 100
-	
+
+				-- enemy units only: callers also use this function to pick the
+				-- weakest ALLY to heal/shield, where raw-lowest-HP must stay
+				if bFocusFire and unit:GetTeam() ~= GetTeam() then
+					-- judge weakness by armor-adjusted effective HP, not raw HP
+					-- (same formula as GetEffectiveHealthFromArmor, which is a local declared later in this file)
+					local fArmor = unit:GetArmor()
+					local fEffectiveHP = hp / (1 - ((0.06 * fArmor) / (1 + 0.06 * math.abs(fArmor))))
+					score = (fEffectiveHP * hpWeight) - (offensivePower * powerWeight)
+					-- prefer targets that are disabled right now (bonuses are additive: score can be negative)
+					if unit:IsStunned() or unit:IsHexed() or unit:IsRooted() or unit:IsNightmared() then
+						score = score - unit:GetMaxHealth() * 0.12
+					end
+					-- focus fire: prefer targets allies are already attacking
+					for _, ally in pairs(tNearbyAllies) do
+						if ally ~= bot and (ally:GetAttackTarget() == unit or ally:GetTarget() == unit) then
+							score = score - unit:GetMaxHealth() * 0.08
+						end
+					end
+					-- prefer closer targets over far chases
+					score = score + distance * 0.15
+				end
+
 				-- If the new score is lower, choose this unit as the weakest
 				if score < bestScore then
 					bestScore = score
@@ -4511,6 +4555,43 @@ local function GetHealthMultiplier(hUnit)
 	return mul
 end
 
+local function GetUltReadinessMul(unit, iq)
+	local ult = unit:GetAbilityInSlot(5)
+	if ult ~= nil and not ult:IsPassive() and ult:IsTrained() then
+		if ult:GetCooldownTimeRemaining() <= 0.5 and unit:GetMana() >= ult:GetManaCost() then
+			return iq.Ult_Ready_Bonus or 1.12
+		end
+		return iq.Ult_Down_Penalty or 0.88
+	end
+	return 1
+end
+
+-- Per-hero power multiplier for fight evaluation: heroes with ultimate ready are worth more,
+-- disabled enemies are worth less. Returns 1 when FightIQ is disabled.
+local function GetFightReadinessMul(unit, bIsEnemy)
+	local iq = GetFightIQ()
+	if iq == nil then return 1 end
+
+	local mul = 1
+
+	if bIsEnemy
+	and (unit:IsStunned() or unit:IsHexed() or unit:IsNightmared() or J.IsTaunted(unit))
+	then
+		mul = mul * (iq.Disabled_Power_Scale or 0.6)
+	end
+
+	-- pcall: ability handles on enemy units are not exercised elsewhere in this codebase,
+	-- so fail closed to a neutral multiplier if the engine rejects the query
+	if unit:GetLevel() >= 6 then
+		local ok, fUltMul = pcall(GetUltReadinessMul, unit, iq)
+		if ok and type(fUltMul) == 'number' then
+			mul = mul * fUltMul
+		end
+	end
+
+	return mul
+end
+
 function J.WeAreStronger(bot, nRadius)
 	local cacheKey = 'WeAreStronger'..tostring(bot:GetPlayerID())..'-'..tostring(nRadius)
 	local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.5)
@@ -4555,8 +4636,9 @@ function J.WeAreStronger(bot, nRadius)
 					then
 						table.insert(tAllyHeroes, unit)
 					end
-					ourPower = ourPower + (math.log(1 + unit:GetOffensivePower())) * (math.sqrt(unit:GetAttackDamage() * unit:GetAttackSpeed() * 5)) * fMul
-					ourPowerRaw = ourPowerRaw + (math.log(1 + unit:GetRawOffensivePower())) * (math.sqrt(Max(0, unit:GetAttackDamage() * unit:GetAttackSpeed() * 5))) * fMul
+					local fReadiness = GetFightReadinessMul(unit, false)
+					ourPower = ourPower + (math.log(1 + unit:GetOffensivePower())) * (math.sqrt(unit:GetAttackDamage() * unit:GetAttackSpeed() * 5)) * fMul * fReadiness
+					ourPowerRaw = ourPowerRaw + (math.log(1 + unit:GetRawOffensivePower())) * (math.sqrt(Max(0, unit:GetAttackDamage() * unit:GetAttackSpeed() * 5))) * fMul * fReadiness
 				end
 			else
 				if not unit:HasModifier('modifier_arc_warden_tempest_double')
@@ -4573,7 +4655,7 @@ function J.WeAreStronger(bot, nRadius)
 					then
 						table.insert(tEnemyHeroes, unit)
 					end
-					enemyPower = enemyPower + (math.log(1 + unit:GetRawOffensivePower())) * (math.sqrt(Max(0, unit:GetAttackDamage() * unit:GetAttackSpeed() * 5))) * fMul
+					enemyPower = enemyPower + (math.log(1 + unit:GetRawOffensivePower())) * (math.sqrt(Max(0, unit:GetAttackDamage() * unit:GetAttackSpeed() * 5))) * fMul * GetFightReadinessMul(unit, true)
 				end
 			end
 		end
@@ -4600,7 +4682,9 @@ function J.WeAreStronger(bot, nRadius)
 		end
 	end
 
-	local res = ourPowerRaw > enemyPower
+	local iq = GetFightIQ()
+	local fCommitMargin = (iq and iq.Commit_Margin) or 1.0
+	local res = ourPowerRaw > enemyPower * fCommitMargin
 	J.Utils.SetCachedVars(cacheKey, res)
 	return res
 end
