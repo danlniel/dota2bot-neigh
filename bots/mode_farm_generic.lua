@@ -607,6 +607,21 @@ function Think()
 		local cDist = GetUnitToLocationDistance(bot, targetFarmLoc);
 		local nNeutrals = bot:GetNearbyCreeps(900, true);
 
+		-- Minute-mark stacking (FarmIQ): while clearing a camp at the stack
+		-- second, run to the camp's stack spot so the aggroed creeps are out
+		-- of the spawn box at :00 and the camp respawns stacked.
+		if Customize.FarmIQ and Customize.FarmIQ.Enable ~= false and Customize.FarmIQ.Stack_Camps ~= false
+		and cDist <= 700 and #nNeutrals > 0 and #nNeutrals <= 4
+		and not J.IsHumanInLoc(targetFarmLoc, 1500)
+		then
+			local nStackSec = J.Site.GetCampStackTime(preferedCamp)
+			local vStackLoc = J.Site.GetCampMoveToStack(preferedCamp.idx)
+			if vStackLoc ~= nil and sec >= nStackSec then
+				bot:Action_MoveToLocation(vStackLoc)
+				return
+			end
+		end
+
 		-- Don't steal farm from an ally already at this camp
 		local nAllyNearCamp = J.GetAlliesNearLoc(targetFarmLoc, 800)
 		local bAllyFarming = false
@@ -721,6 +736,23 @@ function Think()
 		end			
 	end
 	
+	-- Nothing to farm here (FarmIQ): head for the nearest safe lane front and
+	-- pick up free creeps instead of idling toward the middle of the map.
+	if Customize.FarmIQ and Customize.FarmIQ.Enable ~= false and Customize.FarmIQ.Lane_Fallback ~= false then
+		local vBestLane, nBestDist = nil, 99999
+		for _, lane in pairs({LANE_TOP, LANE_MID, LANE_BOT}) do
+			local vLaneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+			local nDist = GetUnitToLocationDistance(bot, vLaneFront)
+			if nDist < nBestDist and #J.GetEnemiesNearLoc(vLaneFront, 1400) == 0 then
+				vBestLane, nBestDist = vLaneFront, nDist
+			end
+		end
+		if vBestLane ~= nil then
+			bot:Action_MoveToLocation(vBestLane)
+			return
+		end
+	end
+
 	bot:Action_MoveToLocation( ( RB + DB )/2 );
 	return;
 end

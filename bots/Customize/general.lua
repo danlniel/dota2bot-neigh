@@ -171,6 +171,19 @@ Customize.FightIQ = {
     Team_Focus_Bonus = 0.25,   -- targeting bonus as a fraction of target max HP
 }
 
+-- Farm IQ: make bots farm like players so their gold is earned, not injected.
+Customize.FarmIQ = {
+    Enable = true,
+
+    -- While clearing a camp near the minute mark, drag the creeps out of the
+    -- spawn box so the camp respawns stacked (skipped if a human is nearby).
+    Stack_Camps = true,
+
+    -- When there is nothing to farm, walk to the nearest safe lane front and
+    -- take free creeps instead of idling toward the middle of the map.
+    Lane_Fallback = true,
+}
+
 -- ML integration: connect the bots to a local model server (see ml/README.md).
 -- Run `python3 ml/server.py` before the game; without a server the bridge
 -- disables itself after a few attempts and static settings apply.

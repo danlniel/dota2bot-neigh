@@ -1,5 +1,20 @@
 # 3. Farming Efficiency — natural GPM instead of gold bonuses
 
+> **Outcome (implemented 2026-07-11):**
+> - **3a camp chaining**: found already implemented upstream (nearest-camp
+>   selection + 1s repick timer in `mode_farm_generic.Think`) — no change
+>   needed. But the repick path called `J.Site.IsCampDangerous`, which did
+>   not exist anywhere → runtime crash whenever a closer camp was found.
+>   Fixed by implementing it in `aba_site.lua` (enemy seen near camp <8s ago).
+> - **3b stacking**: upstream shipped the data (`CStackLoc`, `GetCampStackTime`,
+>   `GetCampMoveToStack`) but never called it. Now wired: while clearing a
+>   camp at the stack second, bots drag creeps to the stack spot; skipped when
+>   a human is within 1500 or the camp already holds >4 creeps.
+> - **3c idle**: implemented as a safe-lane fallback — with nothing to farm,
+>   bots head to the nearest enemy-free lane front instead of walking to the
+>   middle of the map.
+> - Config: `Customize.FarmIQ` (Enable / Stack_Camps / Lane_Fallback).
+
 ## Problem
 
 The single biggest reason FretBots needs `gpm/xpm` top-ups: bots waste farm

@@ -388,6 +388,26 @@ ____exports.GetCampStackTime = function(camp)
     end
     return 56
 end
+-- A camp is dangerous when an enemy hero was seen near it recently.
+-- (mode_farm_generic's camp-repick calls this; it was previously missing,
+-- which crashed Think with "attempt to call a nil value".)
+____exports.IsCampDangerous = function(bot, camp)
+    local loc = camp.cattr.location
+    for ____, id in ipairs(GetTeamPlayers(GetOpposingTeam())) do
+        if IsHeroAlive(id) then
+            local info = GetHeroLastSeenInfo(id)
+            local dInfo = info ~= nil and info[1] or nil
+            if dInfo ~= nil and dInfo.location ~= nil and dInfo.time_since_seen ~= nil and dInfo.time_since_seen < 8 then
+                local dx = dInfo.location.x - loc.x
+                local dy = dInfo.location.y - loc.y
+                if math.sqrt(dx * dx + dy * dy) <= 1600 then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
 ____exports.IsEnemyCamp = function(camp)
     return camp.team ~= GetTeam()
 end
