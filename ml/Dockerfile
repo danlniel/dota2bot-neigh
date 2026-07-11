@@ -2,7 +2,7 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY server.py train.py ./
+COPY server.py train.py report.py ./
 
 # dataset + trained model live on a volume so they survive container rebuilds
 ENV ML_HOST=0.0.0.0 \
