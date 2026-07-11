@@ -1,5 +1,16 @@
 # 5. Natural Economy — wean the bots off stat bonuses
 
+> **Status (2026-07-11):**
+> - Measurement tool shipped: `python3 ml/report.py` — per game: final
+>   kill/networth gap, count+direction of director difficulty changes, and
+>   bot-team GPM @15min. This is the gate for every further step.
+> - **Step 1 applied**: death-bonus `gold` halved to {50,250}, `levels` to
+>   {0.5,1} in `SettingsDefault.lua`. Rationale for going before full
+>   in-game validation: the adaptive director now compensates upward
+>   automatically if bots underperform, so the mildest cut is safe.
+> - **Steps 2–5 remain gated**: play games, run `ml/report.py`, and only
+>   proceed when games end balanced with ≤2 director adjustments each.
+
 ## Goal
 
 The end state of this roadmap: FretBots bonuses become a light corrective

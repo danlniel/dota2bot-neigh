@@ -149,10 +149,14 @@
 			-- clamps are applied to the scaled value
 			range =
 			{
-				gold 			= {100, 500},
+				-- roadmap 05 step 1 (2026-07-11): gold and levels halved from
+				-- {100,500}/{0.5,2} — death bonuses are the least natural
+				-- income; the adaptive ML director compensates upward if the
+				-- bots genuinely need more help.
+				gold 			= {50, 250},
 				armor 			= {1, 3},
 				magicResist 	= {1, 2},
-				levels 			= {0.5, 2},
+				levels 			= {0.5, 1},
 				neutral 		= {30, 180},
 				stats			= {1, 3}
 			},

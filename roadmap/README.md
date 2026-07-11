@@ -13,7 +13,7 @@ main event.
 | 2 | [Team focus-fire](02-team-focus-fire.md) | High — coordinated kills | Medium | ✅ done |
 | 3 | [Farming efficiency](03-farming-efficiency.md) | High — natural GPM | Medium | ✅ done |
 | 4 | [ML dataset features](04-ml-dataset-features.md) | Compounding | Low | ✅ done |
-| 5 | [Natural economy](05-natural-economy.md) | The end goal | Low | blocked by 1–3 |
+| 5 | [Natural economy](05-natural-economy.md) | The end goal | Low | step 1 applied + report tool; steps 2–5 gated on game data |
 
 Work order: **1 → 2** (same code area, one in-game test session), then **4**
 (cheap, do alongside), then **3** (own project), then **5** (gradual, driven
