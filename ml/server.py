@@ -109,9 +109,22 @@ class Policy:
         return directive
 
 
+START_TIME = time.time()
+
+
 class Handler(BaseHTTPRequestHandler):
     policy = Policy()
     log_path = os.path.join(DATA_DIR, f"session-{datetime.now():%Y%m%d}.jsonl")
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._respond({
+                "status": "ok",
+                "model": "trained" if self.policy.model else "heuristic",
+                "uptime_s": int(time.time() - START_TIME),
+            })
+        else:
+            self._respond({"error": "unknown endpoint"}, 404)
 
     def _respond(self, obj: dict, code: int = 200):
         body = json.dumps(obj).encode()
