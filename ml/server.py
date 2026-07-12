@@ -104,14 +104,20 @@ class Policy:
     # Fully automatic: nobody sets difficulty. The game starts at a neutral
     # level and this controller steers it to keep the match close.
     MIN_GAME_TIME = 240      # let the laning phase establish a signal first
-    ADJUST_COOLDOWN = 90     # seconds between changes (per client)
-    DEADBAND = 3.0           # |advantage| below this = balanced, no change
+    ADJUST_COOLDOWN = int(os.environ.get("ML_ADJUST_COOLDOWN", "60"))  # s between changes
+    DEADBAND = float(os.environ.get("ML_DEADBAND", "3"))  # |advantage| below = balanced
+    # Networth is CONTAMINATED by the director's own output (difficulty gold,
+    # GPM top-ups all land in bot networth), so it must never outvote kills —
+    # weighting it like kills created a feedback loop that oscillated
+    # difficulty all game (observed in real session data 2026-07-11).
+    NW_KILL_EQUIV = 5000.0   # gold per kill-equivalent (was 1000)
 
     def __init__(self):
         self.model = None
         self._last_adjust = {}     # client -> unix ts of last difficulty change
         self._director_state = {}  # client -> {"Radiant": nw, "Dire": nw, "ts": ...}
         self._last_game_time = {}  # client -> last seen game clock (for boundary detection)
+        self._last_direction = {}  # client -> sign of last advantage reading (hysteresis)
         self._games_done = 0
         self._auto_lock = threading.Lock()
         if os.path.exists(MODEL_PATH):
@@ -196,17 +202,24 @@ class Policy:
             return directive
 
         now = time.time()
-        if now - self._last_adjust.get(client, 0) < self.ADJUST_COOLDOWN:
-            return directive
 
         enemy_side = "Dire" if human_side == "Radiant" else "Radiant"
         kill_gap = side_kills[human_side] - side_kills[enemy_side]
-        nw_gap = (side_nw[human_side] - side_nw[enemy_side]) / 1000.0
-        advantage = kill_gap + nw_gap
+        nw_gap = side_nw[human_side] - side_nw[enemy_side]
+        advantage = kill_gap + nw_gap / self.NW_KILL_EQUIV
 
-        if advantage >= self.DEADBAND and difficulty < 10:
+        # hysteresis: two consecutive readings must agree on direction before
+        # any change (kills the flip-flopping a single noisy reading causes)
+        direction = 1 if advantage >= self.DEADBAND else (-1 if advantage <= -self.DEADBAND else 0)
+        prev_direction = self._last_direction.get(client, 0)
+        self._last_direction[client] = direction
+
+        if now - self._last_adjust.get(client, 0) < self.ADJUST_COOLDOWN:
+            return directive
+
+        if direction == 1 and prev_direction == 1 and difficulty < 10:
             directive["difficulty"] = difficulty + 1
-        elif advantage <= -self.DEADBAND and difficulty > 0:
+        elif direction == -1 and prev_direction == -1 and difficulty > 0:
             directive["difficulty"] = difficulty - 1
 
         if directive["difficulty"] != difficulty:

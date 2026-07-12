@@ -198,10 +198,12 @@ Customize.ML = {
     Api_Key = '',
 
     -- Seconds between game-state snapshots from the bots VM (FightIQ tuning + dataset).
-    Snapshot_Interval = 10,
+    Snapshot_Interval = 6,
 
     -- Seconds between FretBots director updates (adaptive difficulty).
-    Director_Interval = 20,
+    -- Difficulty changes are additionally rate-limited server-side
+    -- (one step per ~60s, two agreeing readings required).
+    Director_Interval = 10,
 
     -- Allow the server to change FretBots difficulty mid-game (rubber-band by model).
     Allow_Difficulty_Control = true,
