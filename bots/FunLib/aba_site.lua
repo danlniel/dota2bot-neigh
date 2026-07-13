@@ -388,22 +388,70 @@ ____exports.GetCampStackTime = function(camp)
     end
     return 56
 end
--- A camp is dangerous when an enemy hero was seen near it recently.
--- (mode_farm_generic's camp-repick calls this; it was previously missing,
--- which crashed Think with "attempt to call a nil value".)
-____exports.IsCampDangerous = function(bot, camp)
-    local loc = camp.cattr.location
+local SiteCustomize
+if GetScriptDirectory ~= nil and GetScriptDirectory() == "bots" then
+    SiteCustomize = require("bots.FunLib.custom_loader")
+else
+    SiteCustomize = require(GetScriptDirectory() .. "/FunLib/custom_loader")
+end
+local function AvoidDeepSoloEnabled()
+    local iq = SiteCustomize and SiteCustomize.FightIQ
+    return iq ~= nil and iq.Enable ~= false and iq.Avoid_Deep_Solo ~= false
+end
+local function Dist2D(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+-- Recent enemy intel: locations seen <8s ago, and how many alive enemies are
+-- unaccounted for (unseen >4s / never seen).
+local function GetEnemyIntel()
+    local recentLocs = {}
+    local missingCount = 0
     for ____, id in ipairs(GetTeamPlayers(GetOpposingTeam())) do
         if IsHeroAlive(id) then
             local info = GetHeroLastSeenInfo(id)
             local dInfo = info ~= nil and info[1] or nil
-            if dInfo ~= nil and dInfo.location ~= nil and dInfo.time_since_seen ~= nil and dInfo.time_since_seen < 8 then
-                local dx = dInfo.location.x - loc.x
-                local dy = dInfo.location.y - loc.y
-                if math.sqrt(dx * dx + dy * dy) <= 1600 then
-                    return true
+            if dInfo ~= nil and dInfo.location ~= nil and dInfo.time_since_seen ~= nil then
+                if dInfo.time_since_seen < 8 then
+                    recentLocs[#recentLocs + 1] = dInfo.location
                 end
+                if dInfo.time_since_seen > 4 then
+                    missingCount = missingCount + 1
+                end
+            else
+                missingCount = missingCount + 1
             end
+        end
+    end
+    return recentLocs, missingCount
+end
+local function IsBotAlone(bot, nRadius)
+    for i = 1, #GetTeamPlayers(GetTeam()) do
+        local member = GetTeamMember(i)
+        if member ~= nil and member ~= bot and member:IsAlive() and GetUnitToUnitDistance(bot, member) <= nRadius then
+            return false
+        end
+    end
+    return true
+end
+-- A camp is dangerous when an enemy hero was seen near it recently, or when
+-- it lies on the enemy half while the bot is alone with 2+ enemies
+-- unaccounted for (the classic gank setup humans punish).
+____exports.IsCampDangerous = function(bot, camp)
+    local loc = camp.cattr.location
+    local recentLocs, missingCount = GetEnemyIntel()
+    for ____, eLoc in ipairs(recentLocs) do
+        if Dist2D(eLoc, loc) <= 1600 then
+            return true
+        end
+    end
+    if AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500) then
+        local ownAncient = GetAncient(GetTeam())
+        local enemyAncient = GetAncient(GetOpposingTeam())
+        if ownAncient ~= nil and enemyAncient ~= nil
+        and Dist2D(loc, enemyAncient:GetLocation()) < Dist2D(loc, ownAncient:GetLocation()) then
+            return true
         end
     end
     return false
@@ -459,12 +507,28 @@ end
 ____exports.GetClosestNeutralSpwan = function(bot, availableCampList)
     local minDist = 15000
     local closestCamp = nil
+    -- hoist enemy intel out of the camp loop (one scan per call, not per camp)
+    local recentLocs, missingCount = GetEnemyIntel()
+    local bCheckDeep = AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500)
+    local ownAncient = bCheckDeep and GetAncient(GetTeam()) or nil
+    local enemyAncient = bCheckDeep and GetAncient(GetOpposingTeam()) or nil
     for ____, camp in ipairs(availableCampList) do
+        local dangerous = false
+        for ____2, eLoc in ipairs(recentLocs) do
+            if Dist2D(eLoc, camp.cattr.location) <= 1600 then
+                dangerous = true
+                break
+            end
+        end
+        if not dangerous and bCheckDeep and ownAncient ~= nil and enemyAncient ~= nil
+        and Dist2D(camp.cattr.location, enemyAncient:GetLocation()) < Dist2D(camp.cattr.location, ownAncient:GetLocation()) then
+            dangerous = true
+        end
         local dist = GetUnitToLocationDistance(bot, camp.cattr.location)
         if ____exports.IsEnemyCamp(camp) then
             dist = dist * 1.5
         end
-        if ____exports.IsTheClosestOne(bot, camp.cattr.location) and dist < minDist and (bot:GetLevel() >= 10 or not ____exports.IsAncientCamp(camp)) then
+        if not dangerous and ____exports.IsTheClosestOne(bot, camp.cattr.location) and dist < minDist and (bot:GetLevel() >= 10 or not ____exports.IsAncientCamp(camp)) then
             minDist = dist
             closestCamp = camp
         end

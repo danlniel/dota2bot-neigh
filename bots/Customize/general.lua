@@ -98,10 +98,10 @@ Customize.Dire_Names = {
     'Random',
 }
 
--- The desire level that the bots will group up and push the same lane. 
+-- The desire level that the bots will group up and push the same lane.
 -- 1 is mild meaning bots will group up only when convenient; 3 is bots will almost always try to push together.
--- Group pushing may increase the difficulty but can reduce the game experience. 
-Customize.Force_Group_Push_Level = 1
+-- Group pushing may increase the difficulty but can reduce the game experience.
+Customize.Force_Group_Push_Level = 2
 
 -- The Enhanced Fretbots mode settings:
 -- For more about Fretbots mode: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68
@@ -169,6 +169,15 @@ Customize.FightIQ = {
     Team_Focus = true,
     Team_Focus_Window = 6,     -- seconds a call stays active
     Team_Focus_Bonus = 0.25,   -- targeting bonus as a fraction of target max HP
+
+    -- Group hunting: outside teamfights, bots call isolated enemies and
+    -- converge to pick them off together (never under enemy towers).
+    Team_Hunt = true,
+
+    -- Back off when deep in enemy territory alone while 2+ enemies are
+    -- unaccounted for (the classic gank setup). Applies to camp selection
+    -- and retreat desire — bots stop feeding solo pickoffs.
+    Avoid_Deep_Solo = true,
 }
 
 -- Farm IQ: make bots farm like players so their gold is earned, not injected.

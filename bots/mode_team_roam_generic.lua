@@ -128,6 +128,16 @@ function GetDesireHelper()
         return RemapValClamped(J.GetHP(bot), 0, 0.6, BOT_MODE_DESIRE_NONE, 0.98)
     end
 
+    -- group hunt: converge on the team's called pick-off target
+    local nHuntTarget = J.GetTeamFocusTarget()
+    if nHuntTarget ~= nil and #nearbyAllies >= 2
+    and GetUnitToUnitDistance(bot, nHuntTarget) <= 3500
+    and not J.IsRetreating(bot) then
+        SetStickyTarget(nHuntTarget)
+        targetUnit = nHuntTarget
+        return RemapValClamped(J.GetHP(bot), 0.3, 0.8, BOT_MODE_DESIRE_NONE, 0.85)
+    end
+
 	hTargetCreep = X.GetLastHitCreep()
 	if J.IsValid(hTargetCreep) and J.CanBeAttacked(hTargetCreep) then
 		return 1.5

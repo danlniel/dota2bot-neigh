@@ -189,6 +189,13 @@ function GetDesireHelper()
     if botHP < 0.3 and #nEnemyHeroes >= 2 and bot:WasRecentlyDamagedByAnyHero(1) then
         return RemapValClamped(botHP, 0.5, 0, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_ABSOLUTE)
     end
+
+    -- FightIQ: deep in enemy territory, alone, with enemies unaccounted for —
+    -- back off before the gank lands (no visible enemy = nothing worth staying for)
+    if #nEnemyHeroes == 0 and J.IsDeepAloneAndBlind(bot) then
+        return RemapValClamped(J.GetUnaccountedEnemyCount(), 2, 4, 0.55, BOT_MODE_DESIRE_HIGH)
+    end
+
     if X.LowChanceToRun() then
         return BOT_MODE_DESIRE_MODERATE
     end

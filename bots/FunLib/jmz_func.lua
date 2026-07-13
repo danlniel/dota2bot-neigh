@@ -3524,20 +3524,52 @@ function J.GetTeamFocusTarget()
 	return teamFocusTarget
 end
 
--- Called from mode desire polling; only the team captain (first valid bot on
--- the roster, same convention as ml_bridge) evaluates and makes the call.
+local TOWER_ID_LIST = {
+	TOWER_TOP_1, TOWER_TOP_2, TOWER_TOP_3,
+	TOWER_MID_1, TOWER_MID_2, TOWER_MID_3,
+	TOWER_BOT_1, TOWER_BOT_2, TOWER_BOT_3,
+	TOWER_BASE_1, TOWER_BASE_2,
+}
+
+local function IsNearEnemyTower(vLoc, nRadius)
+	for _, towerId in pairs(TOWER_ID_LIST) do
+		local ok, tower = pcall(GetTower, GetOpposingTeam(), towerId)
+		if ok and tower ~= nil and not tower:IsNull() and tower:IsAlive()
+		and GetUnitToLocationDistance(tower, vLoc) <= nRadius then
+			return true
+		end
+	end
+	return false
+end
+
+-- Peacetime hunt ("group hunting"): outside teamfights, call an isolated,
+-- reachable enemy so nearby bots converge and pick it off together —
+-- the same play humans make against lone farming bots.
+local function ConsiderHuntCall(bot, iq)
+	if iq.Team_Hunt == false then return end
+	if J.IsInLaningPhase() then return end
+
+	for _, enemy in pairs(J.GetEnemiesNearLoc(bot:GetLocation(), 2500)) do
+		if J.IsValidHero(enemy)
+		and enemy:CanBeSeen()
+		and not J.IsSuspiciousIllusion(enemy)
+		and not J.CannotBeKilled(nil, enemy)
+		and #J.GetEnemiesNearLoc(enemy:GetLocation(), 1600) <= 1 -- isolated (only itself)
+		and #J.GetAlliesNearLoc(enemy:GetLocation(), 3500) >= 2  -- we can converge
+		and not IsNearEnemyTower(enemy:GetLocation(), 900)       -- no tower dives
+		then
+			teamFocusTarget = enemy
+			teamFocusCallTime = DotaTime()
+			return
+		end
+	end
+end
+
+-- Called from mode desire polling; any bot may make a call when none is
+-- active (the active-call-stands rule keeps calls stable, no thrash).
 function J.ConsiderTeamFocus(bot)
 	local iq = GetFightIQ()
 	if iq == nil or iq.Team_Focus == false then return end
-
-	-- captain-only, cheap bail for the other four bots
-	for i = 1, #GetTeamPlayers(GetTeam()) do
-		local member = GetTeamMember(i)
-		if member ~= nil and member:IsBot() then
-			if member ~= bot then return end
-			break
-		end
-	end
 
 	if not bot:IsAlive() then return end
 
@@ -3545,7 +3577,7 @@ function J.ConsiderTeamFocus(bot)
 	if J.GetTeamFocusTarget() ~= nil then return end
 
 	if not J.IsInTeamFight(bot, 1600) then
-		teamFocusTarget = nil
+		ConsiderHuntCall(bot, iq)
 		return
 	end
 
@@ -3555,6 +3587,31 @@ function J.ConsiderTeamFocus(bot)
 		teamFocusTarget = nTarget
 		teamFocusCallTime = DotaTime()
 	end
+end
+
+-- Count alive enemies unaccounted for (unseen >4s or never seen).
+function J.GetUnaccountedEnemyCount()
+	local n = 0
+	for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+		if IsHeroAlive(id) then
+			local ok, info = pcall(GetHeroLastSeenInfo, id)
+			local dInfo = (ok and info ~= nil) and info[1] or nil
+			if dInfo == nil or dInfo.time_since_seen == nil or dInfo.time_since_seen > 4 then
+				n = n + 1
+			end
+		end
+	end
+	return n
+end
+
+-- Deep in enemy territory, no ally nearby, and 2+ enemies unaccounted for:
+-- the setup every human gank squad looks for. Used to back bots off.
+function J.IsDeepAloneAndBlind(bot)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Avoid_Deep_Solo == false then return false end
+	if J.IsInAllyArea(bot) then return false end
+	if #J.GetAlliesNearLoc(bot:GetLocation(), 1500) > 1 then return false end
+	return J.GetUnaccountedEnemyCount() >= 2
 end
 
 -- The arg `bot` here can be nil
