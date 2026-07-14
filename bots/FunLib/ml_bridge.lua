@@ -182,18 +182,56 @@ local function BuildSnapshot(bot)
 	return snapshot
 end
 
+-- The bots VM may expose CreateHTTPRequest (same name the addon VM uses and
+-- which is proven to work), CreateRemoteHTTPRequest (older name), or neither.
+-- Detect once. HTTP_MODE: 'std' = CreateHTTPRequest, 'remote' =
+-- CreateRemoteHTTPRequest, nil = no outbound HTTP available in this VM.
+local HTTP_MODE = nil
+if type(CreateHTTPRequest) == 'function' then
+	HTTP_MODE = 'std'
+elseif type(CreateRemoteHTTPRequest) == 'function' then
+	HTTP_MODE = 'remote'
+end
+print('[MLBridge] HTTP capability in bots VM: '
+	..'CreateHTTPRequest='..tostring(type(CreateHTTPRequest))
+	..' CreateRemoteHTTPRequest='..tostring(type(CreateRemoteHTTPRequest))
+	..' -> mode='..tostring(HTTP_MODE))
+
+-- Unified POST that works with whichever function exists, normalising the
+-- two different callback shapes into onBody(bodyStringOrNil).
+local function HttpPost(url, bodyTable, onBody)
+	if HTTP_MODE == 'std' then
+		local request = CreateHTTPRequest('POST', url)
+		request:SetHTTPRequestHeaderValue('Content-Type', 'application/json')
+		if ML.Api_Key ~= nil and ML.Api_Key ~= '' then
+			request:SetHTTPRequestHeaderValue('Authorization', ML.Api_Key)
+		end
+		request:SetHTTPRequestRawPostBody('application/json', json.encode(bodyTable))
+		request:Send(function(response)
+			if response ~= nil and response.StatusCode == 200 then
+				onBody(response.Body)
+			else
+				onBody(nil)
+			end
+		end)
+	elseif HTTP_MODE == 'remote' then
+		local request = CreateRemoteHTTPRequest(url)
+		request:SetHTTPRequestRawPostBody('application/json', json.encode(bodyTable))
+		request:Send(function(result) onBody(result) end)
+	else
+		onBody(nil)
+	end
+end
+
 local function SendSnapshot(bot)
 	local ok, err = pcall(function()
-		local request = CreateRemoteHTTPRequest(CurrentServer()..'/policy')
-		request:SetHTTPRequestRawPostBody('application/json', json.encode(BuildSnapshot(bot)))
-		-- callback receives the raw response body string (nil/empty on failure)
-		request:Send(function(result)
+		HttpPost(CurrentServer()..'/policy', BuildSnapshot(bot), function(result)
 			local success, resObj = pcall(function() return json.decode(result) end)
 			if success and type(resObj) == 'table' then
 				failureCount = 0
 				if not hasAnnouncedSuccess then
 					hasAnnouncedSuccess = true
-					print('[MLBridge] CONNECTED via '..CurrentServer()..' — live FightIQ tuning + dataset logging active.')
+					print('[MLBridge] CONNECTED via '..CurrentServer()..' ('..tostring(HTTP_MODE)..') — live FightIQ tuning + dataset active.')
 				end
 				ApplyOverrides(resObj.fightiq)
 			else
@@ -217,22 +255,20 @@ local function IsTeamCaptain(bot)
 	return false
 end
 
--- Load-time hello: fires once when this file loads, so the SERVER records
--- that the bots VM reached this point — diagnosis without needing console.
+-- Load-time hello: fires once when this file loads, over EVERY server URL,
+-- so the Pi records which VM/mode/URL combination actually reaches it.
 local function SendHello()
-	if CreateRemoteHTTPRequest == nil then
-		print('[MLBridge] hello skipped: CreateRemoteHTTPRequest is nil in this VM')
+	if HTTP_MODE == nil then
+		print('[MLBridge] hello skipped: no HTTP function exists in this VM')
 		return
 	end
 	for _, url in pairs(SERVER_URLS) do
 		pcall(function()
-			local req = CreateRemoteHTTPRequest(url..'/policy')
-			req:SetHTTPRequestRawPostBody('application/json', json.encode({
+			HttpPost(url..'/policy', {
 				api_key = (ML.Api_Key ~= nil and ML.Api_Key ~= '') and ML.Api_Key or nil,
-				hello = 'ml_bridge loaded in bots VM',
+				hello = 'ml_bridge loaded in bots VM, http_mode='..tostring(HTTP_MODE),
 				time = 0, team = 0, players = {},
-			}))
-			req:Send(function(result)
+			}, function(result)
 				if result ~= nil and result ~= '' then
 					print('[MLBridge] hello answered via '..url)
 				end
@@ -245,8 +281,8 @@ SendHello()
 -- Called from mode desire polling; internally gated, cheap when idle.
 function MLBridge.Think(bot)
 	if not isEnabled then return end
-	if CreateRemoteHTTPRequest == nil then
-		Disable('CreateRemoteHTTPRequest not available in this VM')
+	if HTTP_MODE == nil then
+		Disable('no HTTP function available in this VM (FightIQ still runs locally)')
 		return
 	end
 	if DotaTime() - lastSendTime < INTERVAL then return end
