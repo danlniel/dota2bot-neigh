@@ -33,9 +33,19 @@ else
 end
 
 local ML = Customize.ML or {}
-local SERVER_URL = ML.Server or 'http://127.0.0.1:5544'
 local INTERVAL = ML.Snapshot_Interval or 10
 local MAX_FAILURES = 3
+
+-- Server list: primary first, then fallback. HTTPS works in the addon VM but
+-- has failed in the bots VM in practice (0 policy records over a whole
+-- session pointed at the https tunnel), so a plain-http LAN fallback lets
+-- the bridge heal itself instead of silently dying.
+local SERVER_URLS = {}
+if type(ML.Server) == 'string' and ML.Server ~= '' then table.insert(SERVER_URLS, ML.Server) end
+if type(ML.Server_Fallback) == 'string' and ML.Server_Fallback ~= '' then table.insert(SERVER_URLS, ML.Server_Fallback) end
+if #SERVER_URLS == 0 then SERVER_URLS = { 'http://127.0.0.1:5544' } end
+local urlIndex = 1
+local function CurrentServer() return SERVER_URLS[urlIndex] end
 
 local isEnabled = ML.Enable ~= false
 local failureCount = 0
@@ -47,7 +57,7 @@ local sendCount = 0
 
 -- Always announce on load so it's visible in console whether MLBridge is even
 -- running (search console / console.log for "MLBridge").
-print('[MLBridge] loaded. enabled='..tostring(isEnabled)..' server='..tostring(SERVER_URL)
+print('[MLBridge] loaded. enabled='..tostring(isEnabled)..' servers='..table.concat(SERVER_URLS, ', ')
 	..' (this line proves ml_bridge.lua is running in the bots VM)')
 
 -- FightIQ overrides received from the server; merged copy is what jmz reads.
@@ -69,7 +79,14 @@ end
 local function CountFailure(what)
 	failureCount = failureCount + 1
 	if failureCount >= MAX_FAILURES then
-		Disable(tostring(what)..' after '..MAX_FAILURES..' consecutive failures')
+		if urlIndex < #SERVER_URLS then
+			urlIndex = urlIndex + 1
+			failureCount = 0
+			hasAnnouncedSuccess = false
+			print('[MLBridge] '..tostring(what)..' — switching to fallback server: '..CurrentServer())
+		else
+			Disable(tostring(what)..' after '..MAX_FAILURES..' consecutive failures (no more fallbacks)')
+		end
 	end
 end
 
@@ -167,7 +184,7 @@ end
 
 local function SendSnapshot(bot)
 	local ok, err = pcall(function()
-		local request = CreateRemoteHTTPRequest(SERVER_URL..'/policy')
+		local request = CreateRemoteHTTPRequest(CurrentServer()..'/policy')
 		request:SetHTTPRequestRawPostBody('application/json', json.encode(BuildSnapshot(bot)))
 		-- callback receives the raw response body string (nil/empty on failure)
 		request:Send(function(result)
@@ -176,11 +193,11 @@ local function SendSnapshot(bot)
 				failureCount = 0
 				if not hasAnnouncedSuccess then
 					hasAnnouncedSuccess = true
-					print('[MLBridge] CONNECTED — server replied, live FightIQ tuning + dataset logging active.')
+					print('[MLBridge] CONNECTED via '..CurrentServer()..' — live FightIQ tuning + dataset logging active.')
 				end
 				ApplyOverrides(resObj.fightiq)
 			else
-				CountFailure('server at '..SERVER_URL..' not answering (bad/empty response)')
+				CountFailure('server at '..CurrentServer()..' not answering (bad/empty response)')
 			end
 		end)
 	end)
@@ -212,7 +229,7 @@ function MLBridge.Think(bot)
 	lastSendTime = DotaTime()
 	if not hasAnnouncedStart then
 		hasAnnouncedStart = true
-		print('[MLBridge] first snapshot going out to '..SERVER_URL..'/policy ...')
+		print('[MLBridge] first snapshot going out to '..CurrentServer()..'/policy ...')
 	end
 	sendCount = sendCount + 1
 	SendSnapshot(bot)

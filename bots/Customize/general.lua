@@ -241,9 +241,15 @@ Customize.ItemIQ = {
 Customize.ML = {
     Enable = true,
 
-    -- Model server address. Local default; point at a shared server
-    -- (e.g. 'http://your-server:5544') to use a community-hosted model.
-    Server = 'http://127.0.0.1:5544',
+    -- Model server address. NOTE: https works for the FretBots side
+    -- (difficulty director) but has NOT worked for the bots-VM bridge
+    -- (FightIQ tuning + dataset) in practice — always provide a plain-http
+    -- Server_Fallback; the bridge switches to it automatically when the
+    -- primary fails.
+    Server = 'https://dota.sunarjodaniel.xyz',
+
+    -- Plain-http fallback for the bots-VM bridge (LAN address of the server).
+    Server_Fallback = 'http://192.168.18.200:5544',
 
     -- Optional API key, must match the server's ML_API_KEY. Empty = no auth.
     Api_Key = '',
