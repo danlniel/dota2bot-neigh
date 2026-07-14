@@ -46,7 +46,6 @@ require 'bots.FretBots.modifiers.Modifier'
 -- director runs.
 -- =====================================================================
 do
-	print('[MLDirector] inline block executing...')
 	local mlJson = require('bots.ts_libs.utils.json')
 	local mlCustomize
 	if GetScriptDirectory() == 'bots' then
@@ -56,9 +55,6 @@ do
 	end
 
 	local ML = mlCustomize.ML or {}
-	print('[MLDirector] config: ML='..tostring(mlCustomize.ML ~= nil)
-		..' Enable='..tostring(ML.Enable)..' Server='..tostring(ML.Server))
-
 	local SERVER_URL = ML.Server or 'http://127.0.0.1:5544'
 	local INTERVAL = ML.Director_Interval or 10
 	local MAX_FAILURES = 3

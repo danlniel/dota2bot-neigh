@@ -275,19 +275,13 @@ class Handler(BaseHTTPRequestHandler):
             self._respond({"error": "bad json"}, 400)
             return
 
-        # key may come as a header (addon VM client) or in the body (bots VM
-        # client — CreateRemoteHTTPRequest cannot set headers)
+        # key may come as a header (addon VM client) or in the body
         if API_KEY:
             supplied = self.headers.get("Authorization", "") or payload.get("api_key", "")
             if supplied != API_KEY:
-                payload.pop("api_key", None)
-                print(f"[auth] 401 from {self.client_address[0]} on {self.path}")
-                self._log(self.path, {"UNAUTHORIZED": True, **payload}, {"error": "unauthorized"})
                 self._respond({"error": "unauthorized"}, 401)
                 return
         payload.pop("api_key", None)  # never write secrets into the dataset
-        if payload.get("hello"):
-            print(f"[hello] {self.client_address[0]}: {payload.get('hello')}")
 
         if self.path == "/policy":
             result = {"fightiq": self.policy.fightiq(payload, self.client_address[0])}
