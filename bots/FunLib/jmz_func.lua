@@ -3659,6 +3659,67 @@ function J.IsTeamDominating()
 	return J.GetNumOfTeamTotalKills(false) >= J.GetNumOfTeamTotalKills(true) + nLead
 end
 
+-- ==============================
+-- Power-spike timing (roadmap B1)
+-- ==============================
+-- Pros time fights/objectives to their power spikes. Right after a team member
+-- hits a key level breakpoint (6/12/18/25) or completes a fight-defining item,
+-- open a short aggression window: the commit margin is relaxed (WeAreStronger)
+-- and push desire raised, so bots look for fights/objectives when strongest.
+-- Core safety (WeAreStronger, fog, buyback) still applies — this only nudges.
+local POWER_SPIKE_ITEMS = {
+	'item_black_king_bar', 'item_blink', 'item_swift_blink', 'item_overwhelming_blink',
+	'item_arcane_blink', 'item_ultimate_scepter', 'item_manta', 'item_sheepstick',
+	'item_abyssal_blade', 'item_assault', 'item_radiance', 'item_desolator',
+	'item_shivas_guard', 'item_bloodthorn', 'item_greater_crit', 'item_octarine_core',
+	'item_aeon_disk', 'item_satanic', 'item_daedalus', 'item_gungir', 'item_disperser',
+}
+local powerSpikeUntil = -999
+local powerSpikeLevelSeen = {}   -- playerId -> highest breakpoint recorded
+local powerSpikeItemCount = {}   -- playerId -> count of watched items owned
+local powerSpikeLastScan = -999
+
+local function ScanPowerSpikes(iq)
+	if DotaTime() - powerSpikeLastScan < 2 then return end
+	powerSpikeLastScan = DotaTime()
+	local window = iq.Power_Spike_Window or 25
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local m = GetTeamMember(i)
+		if m ~= nil and m.GetLevel ~= nil then
+			local id = m:GetPlayerID()
+			local lvl = m:GetLevel()
+			local bp = 0
+			if lvl >= 25 then bp = 25 elseif lvl >= 18 then bp = 18
+			elseif lvl >= 12 then bp = 12 elseif lvl >= 6 then bp = 6 end
+			local cnt = 0
+			for _, itemName in ipairs(POWER_SPIKE_ITEMS) do
+				if J.HasItem(m, itemName) then cnt = cnt + 1 end
+			end
+			if powerSpikeLevelSeen[id] == nil then
+				-- first observation of this player: record baseline, no trigger
+				powerSpikeLevelSeen[id] = bp
+				powerSpikeItemCount[id] = cnt
+			else
+				if bp > powerSpikeLevelSeen[id] then
+					powerSpikeLevelSeen[id] = bp
+					powerSpikeUntil = DotaTime() + window
+				end
+				if cnt > (powerSpikeItemCount[id] or 0) then
+					powerSpikeUntil = DotaTime() + window
+				end
+				powerSpikeItemCount[id] = cnt
+			end
+		end
+	end
+end
+
+function J.IsInPowerSpikeWindow()
+	local iq = GetFightIQ()
+	if iq == nil or iq.Power_Spike == false then return false end
+	ScanPowerSpikes(iq)
+	return DotaTime() < powerSpikeUntil
+end
+
 -- Being kited by a longer-range attacker (roadmap A4): taking auto-attack
 -- damage from an enemy hero whose attack range exceeds ours by a margin, while
 -- they sit outside our reach. Standing still eating it is the exact "just
@@ -5081,6 +5142,11 @@ function J.WeAreStronger(bot, nRadius)
 	end
 
 	local fCommitMargin = (iq and iq.Commit_Margin) or 1.0
+	-- power-spike window: relax the commit margin so bots seek fights when
+	-- they are strongest (safety still gated by the power comparison itself)
+	if J.IsInPowerSpikeWindow() then
+		fCommitMargin = fCommitMargin * ((iq and iq.Power_Spike_Margin_Scale) or 0.9)
+	end
 	local res = ourPowerRaw > enemyPower * fCommitMargin
 	J.Utils.SetCachedVars(cacheKey, res)
 	return res

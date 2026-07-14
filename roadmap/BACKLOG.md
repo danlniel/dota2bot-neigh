@@ -67,11 +67,15 @@ disengage out of range, close the gap, or focus the ranged carry.
 
 ## Tier B — high impact, more effort
 
-### B1. Proactive power-spike timing
-**Gap:** level checks are floors, never spikes; no aggression window after
-BKB/Blink/Aghs completes or at 6/12/18/25. **Signal:** team item-completion
-events + level breakpoints; **Action:** temporary team-roam/push desire boost.
-**Where:** `mode_team_roam_generic.lua`, `aba_push.lua`, FightIQ.
+### B1. Proactive power-spike timing — ✅ (2026-07-14)
+**Shipped:** `jmz.IsInPowerSpikeWindow()` opens a ~25s aggression window when a
+teammate crosses a level breakpoint (6/12/18/25) or completes a fight-defining
+item (BKB/Blink/Aghs/Manta/Hex/… — curated `POWER_SPIKE_ITEMS`). During it,
+`WeAreStronger`'s commit margin is scaled by `Power_Spike_Margin_Scale` (0.9)
+and `aba_push`'s desire ceiling rises 0.82→0.92. First observation of each hero
+records a baseline (no false spike on script attach). Config:
+`FightIQ.Power_Spike` / `Power_Spike_Window` / `Power_Spike_Margin_Scale`.
+Safety (power comparison, fog, buyback) still gates — this only nudges.
 
 ### B2. Draft: real counter-pick + team-comp completeness (user #2)
 **Gap:** matchup synergy/counter data used only as a light nudge. **Add:** weight

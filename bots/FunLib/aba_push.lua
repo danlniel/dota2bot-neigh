@@ -132,6 +132,12 @@ function ____exports.GetPushDesireHelper(bot, lane)
     local gameState = getGlobalGameState()
     local locationState = getGlobalLocationState()
     local nMaxDesire = 0.82
+    -- power-spike window (B1): raise the push ceiling so bots take objectives
+    -- right after a key item/level timing (a ceiling, not a floor — safety
+    -- checks below can still clamp it back down)
+    if jmz.IsInPowerSpikeWindow and jmz.IsInPowerSpikeWindow() then
+        nMaxDesire = 0.92
+    end
     local nSearchRange = 2000
     local botActiveMode = bot:GetActiveMode()
     local nModeDesire = bot:GetActiveModeDesire()

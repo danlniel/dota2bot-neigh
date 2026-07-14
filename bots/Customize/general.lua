@@ -194,6 +194,13 @@ Customize.FightIQ = {
     -- squishy long-range backliners as kill targets.
     Avoid_Long_Range = true,
     Long_Range_Margin = 150,  -- enemy must out-range us by this much to trigger
+
+    -- Power-spike timing: right after a teammate hits a level breakpoint
+    -- (6/12/18/25) or completes a fight-defining item, bots look for fights
+    -- and objectives (relaxed commit margin + higher push ceiling).
+    Power_Spike = true,
+    Power_Spike_Window = 25,         -- seconds the aggression window lasts
+    Power_Spike_Margin_Scale = 0.9,  -- commit margin multiplier during window
 }
 
 -- Farm IQ: make bots farm like players so their gold is earned, not injected.
