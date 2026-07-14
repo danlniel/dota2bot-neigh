@@ -141,8 +141,11 @@ Customize.FightIQ = {
     Enable = true,
 
     -- Bots only commit to fights when their estimated team power exceeds the enemy's by this ratio.
-    -- 1.0 = original coin-flip behavior; higher = pickier, smarter engagements.
-    Commit_Margin = 1.05,
+    -- 1.0 = original coin-flip (dives everything); higher = pickier, only fights it's winning.
+    -- 1.10 = disciplined: refuses even/losing fights (harder to beat), still commits when ahead.
+    -- Dial to taste: raise toward 1.15 for more cautious bots, lower toward 1.03 for aggressive.
+    -- Note: fog awareness already adds situational caution when enemies are missing.
+    Commit_Margin = 1.10,
 
     -- Team power weighting for ultimate availability (heroes level 6+ with a non-passive ultimate).
     -- Ready ultimates swing fights; a hero with ult on cooldown is worth less in a fight.
