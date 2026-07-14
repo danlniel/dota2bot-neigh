@@ -182,6 +182,12 @@ Customize.FightIQ = {
     -- Kill lead at which the team plays like it's winning: deep-solo caution
     -- switches off and bots start farming/invading the ENEMY jungle.
     Dominance_Kill_Lead = 6,
+
+    -- Buyback awareness: don't dive enemy rax/ancient into a full set of
+    -- buybacks. Enemy buyback is estimated (their gold isn't queryable): a
+    -- dead enemy core is treated as a likely defender past Buyback_Min_Time.
+    Buyback_Awareness = true,
+    Buyback_Min_Time = 15,   -- minutes; before this, buyback rarely matters
 }
 
 -- Farm IQ: make bots farm like players so their gold is earned, not injected.

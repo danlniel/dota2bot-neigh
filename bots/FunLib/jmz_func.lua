@@ -3604,6 +3604,53 @@ function J.GetUnaccountedEnemyCount()
 	return n
 end
 
+-- ==============================
+-- Buyback awareness (roadmap A1)
+-- ==============================
+-- Enemy gold and buyback cooldown are NOT queryable from the bots VM, so
+-- enemy buyback is ESTIMATED: a dead enemy CORE (pos 1-3) past the mid-game
+-- is treated as a likely buyback defender (cores bank buyback gold; supports
+-- usually don't). Own buyback IS fully queryable and used to allow safe deep
+-- commitment. This exists to stop bots diving a rax/ancient into a full set
+-- of buybacks.
+
+-- Effective enemies that could DEFEND an objective near vLoc: alive enemies
+-- in range plus dead cores likely holding buyback.
+function J.GetEffectiveEnemyDefenders(bot, vLoc, nRadius)
+	local n = #J.GetEnemiesNearLoc(vLoc, nRadius)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Buyback_Awareness == false then return n end
+	if DotaTime() < (iq.Buyback_Min_Time or 15) * 60 then return n end
+
+	local ok, EnemyRoles = pcall(require, GetScriptDirectory()..'/FunLib/enemy_role_estimation')
+	for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+		if not IsHeroAlive(id) then
+			local pos = nil
+			if ok and EnemyRoles ~= nil and EnemyRoles.GetEnemyPosition ~= nil then
+				pos = EnemyRoles.GetEnemyPosition(id)
+			end
+			-- cores (pos 1-3) and unknown -> assume buyback threat; supports not
+			if pos == nil or pos <= 3 then
+				n = n + 1
+			end
+		end
+	end
+	return n
+end
+
+-- Own alive team members who can buy back right now (queryable). A deep siege
+-- is safe when our own buybacks are up, because a wipe is recoverable.
+function J.CountTeamBuybackReady()
+	local n = 0
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local m = GetTeamMember(i)
+		if m ~= nil and m:IsAlive() and m:HasBuyback() and m:GetGold() >= m:GetBuybackCost() then
+			n = n + 1
+		end
+	end
+	return n
+end
+
 -- True when the bot's team is far enough ahead on kills to play in enemy
 -- territory with confidence (threshold ML-tunable via FightIQ).
 function J.IsTeamDominating()

@@ -254,6 +254,20 @@ function ____exports.GetPushDesireHelper(bot, lane)
             return BotModeDesire.VeryLow
         end
     end
+    -- A1 buyback awareness: don't dive the enemy base when their effective
+    -- defenders (alive + likely-buyback dead cores) match/exceed our attackers,
+    -- unless we hold our own buybacks (a wipe there is recoverable).
+    if hEnemyAncient ~= nil then
+        local vAnc = hEnemyAncient:GetLocation()
+        if GetUnitToLocationDistance(bot, vAnc) < 3500 then
+            local nEffectiveDefenders = jmz.GetEffectiveEnemyDefenders(bot, vAnc, 4500)
+            local nOwnBuybacks = jmz.CountTeamBuybackReady()
+            if gameState.aliveAllyCount <= nEffectiveDefenders and nOwnBuybacks < 2 then
+                nMaxDesire = math.min(nMaxDesire, 0.45)
+            end
+        end
+    end
+
     local vEnemyLaneFrontLocation = GetLaneFrontLocation(gameState.enemyTeam, lane, 0)
     local waitForSpells = ____exports.ShouldWaitForImportantItemsSpells(vEnemyLaneFrontLocation)
     if waitForSpells and eAliveCount >= aAliveCount and eAliveCoreCount >= aAliveCoreCount then

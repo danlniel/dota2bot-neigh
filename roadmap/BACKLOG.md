@@ -7,12 +7,19 @@ aegis windows) to be sharpened by the pro-play research pass.
 
 ## Tier A — biggest impact, smallest code (do first)
 
-### A1. Enemy buyback awareness
-**Gap:** zero buyback checks in push/Rosh/ancient decisions. Bots throw 5 heroes
-at a rax while the whole enemy team can buy back.
-**Signal:** enemy `GetBuyback*` gold/cooldown; **Action:** gate rax/ancient
-commitment and Roshan on "enough enemies can't buy back."
-**Where:** `aba_push.lua`, `mode_roshan_generic.lua`. Cheap, high value.
+### A1. Enemy buyback awareness — ✅ DONE (2026-07-14)
+**Gap:** zero buyback checks in push/Rosh/ancient decisions. Bots threw 5 heroes
+at a rax while the whole enemy team could buy back.
+**Shipped:** `jmz.GetEffectiveEnemyDefenders(bot, vLoc, r)` = alive enemies near
+the objective + dead enemy CORES likely holding buyback (enemy gold isn't
+queryable, so buyback is estimated from role via enemy_role_estimation + a
+mid-game time gate). `jmz.CountTeamBuybackReady()` reads our own buyback
+directly. `aba_push.lua` damps base-dive desire (→0.45) when alive allies ≤
+effective defenders AND we lack our own buybacks. Config:
+`Customize.FightIQ.Buyback_Awareness` / `Buyback_Min_Time` (default 15 min).
+**Note:** research confirmed pros/OpenAI Five time sieges to when enemies can't
+buy back. Roshan-side buyback gate deferred (Rosh already gates on alive-enemy
+proximity); revisit if needed.
 
 ### A2. ML model — unblock + strengthen (user #1)
 **Blocker:** MLBridge (bots VM) never connected last session — 0 `/policy`
