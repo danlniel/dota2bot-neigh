@@ -217,6 +217,31 @@ local function IsTeamCaptain(bot)
 	return false
 end
 
+-- Load-time hello: fires once when this file loads, so the SERVER records
+-- that the bots VM reached this point — diagnosis without needing console.
+local function SendHello()
+	if CreateRemoteHTTPRequest == nil then
+		print('[MLBridge] hello skipped: CreateRemoteHTTPRequest is nil in this VM')
+		return
+	end
+	for _, url in pairs(SERVER_URLS) do
+		pcall(function()
+			local req = CreateRemoteHTTPRequest(url..'/policy')
+			req:SetHTTPRequestRawPostBody('application/json', json.encode({
+				api_key = (ML.Api_Key ~= nil and ML.Api_Key ~= '') and ML.Api_Key or nil,
+				hello = 'ml_bridge loaded in bots VM',
+				time = 0, team = 0, players = {},
+			}))
+			req:Send(function(result)
+				if result ~= nil and result ~= '' then
+					print('[MLBridge] hello answered via '..url)
+				end
+			end)
+		end)
+	end
+end
+SendHello()
+
 -- Called from mode desire polling; internally gated, cheap when idle.
 function MLBridge.Think(bot)
 	if not isEnabled then return end

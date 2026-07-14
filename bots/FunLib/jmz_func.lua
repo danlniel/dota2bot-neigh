@@ -1,3 +1,4 @@
+print('[neigh] jmz_func.lua loading...')
 local J = {}
 
 local bDebugMode = ( 1 == 10 )
@@ -27,6 +28,7 @@ do
 end
 
 J.Site = require( GetScriptDirectory()..'/FunLib/aba_site' )
+print('[neigh] jmz: aba_site OK')
 J.Item = require( GetScriptDirectory()..'/FunLib/aba_item' )
 J.Buff = require( GetScriptDirectory()..'/FunLib/aba_buff' )
 J.Role = require( GetScriptDirectory()..'/FunLib/aba_role' )
@@ -34,7 +36,9 @@ J.Skill = require( GetScriptDirectory()..'/FunLib/aba_skill' )
 J.Chat = require( GetScriptDirectory()..'/FunLib/aba_chat' )
 J.Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
+print('[neigh] jmz: core libs OK, loading ml_bridge...')
 J.MLBridge = require(GetScriptDirectory()..'/FunLib/ml_bridge')
+print('[neigh] jmz: ml_bridge OK')
 
 -- Effective FightIQ config: live ML-server overrides win over static Customize
 -- values; nil when the feature is disabled. Used by fight evaluation and
