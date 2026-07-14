@@ -61,6 +61,42 @@ local function ReactiveItemPurchase()
 			if _tryReactiveBuy('item_cloak') then return end
 		end
 	end
+
+	-- Count enemy threat archetypes once for the phase-2 checks below.
+	local nEnemyDisablers, nEnemyNukers = 0, 0
+	for _, e in pairs(J.GetEnemyList(bot, 99999)) do
+		if J.IsValidHero(e) then
+			if Role.IsDisabler(e) then nEnemyDisablers = nEnemyDisablers + 1 end
+			if Role.IsNuker(e) then nEnemyNukers = nEnemyNukers + 1 end
+		end
+	end
+	local bBehind = J.GetNumOfTeamTotalKills(true) > J.GetNumOfTeamTotalKills(false) + 5
+
+	-- 3) BKB for cores vs heavy disable/magic (mid-game+, when it matters).
+	--    Expensive, so gold-gating means it only fires when the core can afford it.
+	if iq.Anti_Disable ~= false and J.IsCore(bot) and not Role.IsSupport(bot)
+	and DotaTime() > 15 * 60
+	and (nEnemyDisablers >= 2 or nEnemyNukers >= 3) then
+		if _tryReactiveBuy('item_black_king_bar') then return end
+	end
+
+	-- 4) Team defensive items when behind vs magic: durable non-carry -> Pipe,
+	--    support -> Glimmer Cape (both counter magic burst on the group).
+	if iq.Team_Defense ~= false and bBehind and nEnemyNukers >= 2 then
+		if Role.IsSupport(bot) then
+			if _tryReactiveBuy('item_glimmer_cape') then return end
+		elseif not Role.IsCarry(bot) and bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH then
+			if _tryReactiveBuy('item_pipe') then return end
+		end
+	end
+
+	-- 5) Gap-close / escape vs long-range kiters: Force Staff (cheap, universal).
+	if iq.Gap_Close ~= false then
+		local bKited = J.IsBeingKitedByLongerRange(bot)
+		if bKited and not J.HasItem(bot, 'item_blink') then
+			if _tryReactiveBuy('item_force_staff') then return end
+		end
+	end
 end
 
 local X = {}

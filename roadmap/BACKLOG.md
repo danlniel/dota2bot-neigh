@@ -21,13 +21,16 @@ effective defenders AND we lack our own buybacks. Config:
 buy back. Roshan-side buyback gate deferred (Rosh already gates on alive-enemy
 proximity); revisit if needed.
 
-### A2. ML model — unblock + strengthen (user #1)
-**Blocker:** MLBridge (bots VM) never connected last session — 0 `/policy`
-records, so FightIQ live-tuning + fight dataset never ran. **First:** diagnose
-the `[MLBridge]` console line (HTTPS-in-bots-VM vs `CreateRemoteHTTPRequest`).
-**Then:** the richer features (hero/nw/towers/roshan) are logged but the model
-is still a 5-feature linear fit — grow it once real data flows; consider the
-director itself becoming ML-driven. **Where:** `ml/`, `bots/FunLib/ml_bridge.lua`.
+### A2. ML model — unblock + strengthen (user #1) — ❌ IMPOSSIBLE from bots VM (2026-07-14)
+**Verdict:** the bot-scripting VM has NO working outbound HTTP. Confirmed across
+several games: 1500+ `/director` records from the addon VM (CreateHTTPRequest)
+vs exactly 0 from the bots VM under BOTH `CreateHTTPRequest` and
+`CreateRemoteHTTPRequest`. Code ran (bots played) + every URL tried + zero
+packets = Valve sandboxes the bots VM off the network. `ml_bridge.lua` is now a
+no-op shim; FightIQ runs locally from `Customize.FightIQ`. The DIFFICULTY
+director (addon VM) is unaffected and still learns from `/director` data.
+Live FightIQ tuning + the fight dataset are not achievable without a fragile
+cross-VM game-state/chat hack (judged not worth it). Do not reopen.
 
 ### A3. Reactive itemization (user #3) — ✅ v1 (2026-07-14)
 **Gap:** builds were static; only reaction was dust-vs-invis.
@@ -37,8 +40,12 @@ each think, ≤1 buy per 4s, gold-gated so it never stalls the main build):
   **Ghost Scepter**, durable cores buy **Blade Mail** (this is A4 part 3).
 - vs 2+ enemy nukers early + squishy → cheap **Cloak**.
 Config: `Customize.ItemIQ` (`Anti_Physical` / `Anti_Magic`).
-**Phase 2 (todo):** BKB timing vs heavy magic/disable for cores, Pipe/Glimmer
-when team behind, Force/Blink gap-close vs kiters, comp-aware core-build swaps.
+**Phase 2 — ✅ (2026-07-14):** cores buy **BKB** vs 2+ enemy disablers / 3+
+nukers (mid-game+); when behind vs 2+ nukers, durable heroes buy **Pipe** and
+supports buy **Glimmer Cape**; vs long-range kiters with no blink, buy **Force
+Staff** to close/escape. All gold-gated (never stalls the main build), ≤1
+reactive buy per 4s. Config: `ItemIQ.Anti_Disable` / `Team_Defense` / `Gap_Close`.
+Comp-aware core-build swaps deferred (large, low marginal value).
 
 ### A4. Don't eat free damage from long-range attackers (e.g. Sniper) — ✅ parts 1&2 (2026-07-14)
 **Shipped:** `jmz.IsBeingKitedByLongerRange(bot)` (enemy out-ranges us by

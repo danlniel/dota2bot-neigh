@@ -236,6 +236,12 @@ Customize.ItemIQ = {
     Anti_Physical = true,
     -- vs 2+ magic nukers early: squishy heroes grab a cheap Cloak.
     Anti_Magic = true,
+    -- cores buy BKB vs heavy enemy disable/magic (mid-game+).
+    Anti_Disable = true,
+    -- when behind vs magic: durable heroes grab Pipe, supports grab Glimmer.
+    Team_Defense = true,
+    -- vs long-range kiters with no blink: grab a Force Staff to close/escape.
+    Gap_Close = true,
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).
