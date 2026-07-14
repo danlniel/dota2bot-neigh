@@ -1,5 +1,6 @@
 local Utils = require( GetScriptDirectory()..'/FunLib/utils')
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
+local Customize = require( GetScriptDirectory()..'/FunLib/custom_loader')
 
 local Version      = require(GetScriptDirectory()..'/FunLib/version')
 local Localization = require(GetScriptDirectory()..'/FunLib/localization')
@@ -206,9 +207,23 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) t
 
 		local nLongestAttackRange = math.max(botAttackRange, 250, nFurthestEnemyAttackRange)
 
-		local target_loc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -nLongestAttackRange)
+		-- B3 freeze / anti-overpush: when we're the side pushing the wave and the
+		-- bot is healthy, hang back an extra margin so the lane freezes on our
+		-- side instead of shoving under the enemy tower (which denies our own
+		-- pulls/ganks and exposes us). Only biases the IDLE position — last-hit
+		-- and deny already returned above, so this never costs creeps.
+		local nFreezeBias = 0
+		local laneIQ = Customize.LaneIQ
+		if (laneIQ == nil or laneIQ.Freeze_When_Ahead ~= false)
+		and J.GetHP(bot) > 0.6
+		and fLaneFrontAmount_enemy < fLaneFrontAmount   -- our wave is ahead = we're pushing
+		then
+			nFreezeBias = laneIQ and laneIQ.Freeze_Pullback or 250
+		end
+
+		local target_loc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -nLongestAttackRange - nFreezeBias)
 		if fLaneFrontAmount_enemy < fLaneFrontAmount then
-			target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
+			target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange - nFreezeBias)
 		end
 
 		bot:Action_MoveToLocation(target_loc + RandomVector(50))

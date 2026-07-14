@@ -92,10 +92,19 @@ already-picked allies lack (disabler/initiator/nuker/carry), on the synergy
 scale, so drafts stop ending up as five nukers with no stun. Config:
 `Customize.DraftIQ.Comp_Completeness`.
 
-### B3. Lane creep control / pulling
-**Gap:** no pulling, no equilibrium freezing, minimal deny. Pros starve carries
-this way. **Add:** support pull routing at pull timings, freeze near own tower
-when ahead. **Where:** `mode_laning_generic.lua`, `mode_farm_generic.lua`.
+### B3. Lane creep control / pulling — ◑ freeze ✅, pulling deferred (2026-07-14)
+**Shipped (freeze / anti-overpush):** in `mode_laning_generic` idle positioning,
+a healthy bot that's pushing the wave hangs back an extra margin so the lane
+freezes on our side instead of shoving under the enemy tower (which denies our
+own pulls/ganks and exposes the hero). Only biases the idle position — last-hit
+and deny already return earlier, so it never costs creeps. Config:
+`LaneIQ.Freeze_When_Ahead` / `Freeze_Pullback`.
+**Deferred (support pull routing):** intentionally NOT shipped. Pulling needs a
+pull-camp→lane mapping and precise per-camp aggro timing that don't exist in the
+codebase, and the custom laning `Think` only runs in narrow cases (most bots use
+Valve's default laning). A blind implementation would likely regress lane play
+(support wandering to jungle mid-lane). Needs in-game iteration to do safely —
+flagged rather than shipped broken.
 
 ## Tier C — polish
 

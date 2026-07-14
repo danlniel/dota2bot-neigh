@@ -227,6 +227,15 @@ Customize.FarmIQ = {
     Lane_Fallback = true,
 }
 
+-- Lane IQ: laning-phase creep control.
+Customize.LaneIQ = {
+    -- Freeze / anti-overpush: when healthy and pushing the wave, hang back an
+    -- extra margin so the lane freezes on our side instead of shoving under the
+    -- enemy tower. Only affects idle positioning (never last-hit/deny).
+    Freeze_When_Ahead = true,
+    Freeze_Pullback = 250,   -- extra units to hold back when freezing
+}
+
 -- Draft IQ: on top of the existing counter-pick/synergy scoring, reward
 -- candidates that fill a team-comp hole (lockdown/initiation/magic/physical).
 Customize.DraftIQ = {
