@@ -634,6 +634,25 @@ local function ScoreCandidatesForTeam(team, rolePool, enemyNames, posIndex)
 				end
 			end
 
+			-- 2b. Team-comp completeness: reward a candidate that fills a role
+			-- the already-picked allies lack (lockdown / initiation / magic /
+			-- physical scaling), so the draft ends up balanced instead of, say,
+			-- five squishy nukers with no stun. Bonuses are on the synergy scale.
+			if (Customize == nil or Customize.DraftIQ == nil or Customize.DraftIQ.Comp_Completeness ~= false)
+			and #allyNames > 0 then
+				local needDisabler, needInitiator, needNuker, needCarry = true, true, true, true
+				for _, ally in ipairs(allyNames) do
+					if Role.IsDisabler(ally)  then needDisabler = false end
+					if Role.IsInitiator(ally) then needInitiator = false end
+					if Role.IsNuker(ally)     then needNuker = false end
+					if Role.IsCarry(ally)     then needCarry = false end
+				end
+				if needDisabler  and Role.IsDisabler(cand)  then score = score + 1.2 end
+				if needInitiator and Role.IsInitiator(cand) then score = score + 1.0 end
+				if needNuker     and Role.IsNuker(cand)     then score = score + 0.8 end
+				if needCarry     and Role.IsCarry(cand)     then score = score + 1.0 end
+			end
+
 			-- 3. Role weight multiplier: heroes that fit the position better score higher
 			if posIndex and HeroPositionMap[cand] then
 				local posWeight = HeroPositionMap[cand][posIndex] or 50

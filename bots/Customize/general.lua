@@ -216,6 +216,13 @@ Customize.FarmIQ = {
     Lane_Fallback = true,
 }
 
+-- Draft IQ: on top of the existing counter-pick/synergy scoring, reward
+-- candidates that fill a team-comp hole (lockdown/initiation/magic/physical).
+Customize.DraftIQ = {
+    Enable = true,
+    Comp_Completeness = true,
+}
+
 -- Item IQ: reactive itemization on top of each hero's static build. Buys a
 -- situational defensive item when the enemy threat calls for it (only when
 -- fully affordable, so it never stalls the main build).

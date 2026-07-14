@@ -77,11 +77,13 @@ records a baseline (no false spike on script attach). Config:
 `FightIQ.Power_Spike` / `Power_Spike_Window` / `Power_Spike_Margin_Scale`.
 Safety (power comparison, fog, buyback) still gates — this only nudges.
 
-### B2. Draft: real counter-pick + team-comp completeness (user #2)
-**Gap:** matchup synergy/counter data used only as a light nudge. **Add:** weight
-candidates hard against the enemy's *actual* picks, and fill comp holes (ensure
-stun/lockdown, magic + physical mix, a save, an initiator). **Where:**
-`hero_selection.lua` (`GetPositionedPool`/weighting), `aba_matchups.lua`.
+### B2. Draft: counter-pick + team-comp completeness (user #2) — ✅ comp-completeness (2026-07-14)
+**Found:** counter-pick + synergy scoring already existed and IS used
+(`ScoreCandidatesForTeam` + weighted-random top-5). **Shipped:** added a
+team-comp-completeness term — candidates get a bonus for filling a role the
+already-picked allies lack (disabler/initiator/nuker/carry), on the synergy
+scale, so drafts stop ending up as five nukers with no stun. Config:
+`Customize.DraftIQ.Comp_Completeness`.
 
 ### B3. Lane creep control / pulling
 **Gap:** no pulling, no equilibrium freezing, minimal deny. Pros starve carries
