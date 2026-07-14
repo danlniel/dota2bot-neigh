@@ -6,8 +6,9 @@ end
 if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" end end
 -- Version information
 local Version = require 'bots.FunLib.version'
--- Print version to console
-print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number)
+-- Print version to console. The [neigh fork] marker proves THIS file is the
+-- one loading (and not a subscribed workshop copy resolving instead).
+print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork]')
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
@@ -36,8 +37,127 @@ require 'bots.FretBots.RoleDetermination'
 -- Neutral items
 require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
--- ML Director (adaptive difficulty via local model server, see ml/README.md)
-require 'bots.FretBots.MLDirector'
+
+-- =====================================================================
+-- ML Director (adaptive difficulty via model server, see ml/README.md)
+-- Inlined here on purpose: a `require` for a file that does not exist in
+-- the subscribed workshop copy can be silently skipped when the workshop
+-- item is mounted. Inline code cannot be skipped: if this file runs, the
+-- director runs.
+-- =====================================================================
+do
+	print('[MLDirector] inline block executing...')
+	local mlJson = require('bots.ts_libs.utils.json')
+	local mlCustomize
+	if GetScriptDirectory() == 'bots' then
+		mlCustomize = require('bots.FunLib.custom_loader')
+	else
+		mlCustomize = require(GetScriptDirectory()..'/FunLib/custom_loader')
+	end
+
+	local ML = mlCustomize.ML or {}
+	print('[MLDirector] config: ML='..tostring(mlCustomize.ML ~= nil)
+		..' Enable='..tostring(ML.Enable)..' Server='..tostring(ML.Server))
+
+	local SERVER_URL = ML.Server or 'http://127.0.0.1:5544'
+	local INTERVAL = ML.Director_Interval or 10
+	local MAX_FAILURES = 3
+	local ALLOW_DIFFICULTY_CONTROL = ML.Allow_Difficulty_Control ~= false
+
+	MLDirector = MLDirector or {}
+	local isEnabled = ML.Enable ~= false
+	local failureCount = 0
+	local timerName = 'MLDirectorTimer'
+	local hasAnnouncedDisable = false
+
+	local function Disable(reason)
+		isEnabled = false
+		if not hasAnnouncedDisable then
+			hasAnnouncedDisable = true
+			print('[MLDirector] disabled: '..tostring(reason)..' (static FretBots difficulty rules apply)')
+		end
+		Timers:RemoveTimer(timerName)
+	end
+
+	local function CountFailure(what)
+		failureCount = failureCount + 1
+		if failureCount >= MAX_FAILURES then
+			Disable(tostring(what)..' after '..MAX_FAILURES..' consecutive failures')
+		end
+	end
+
+	local function BuildSnapshot()
+		return {
+			game_time = Utilities:GetTime(),
+			difficulty = Settings.difficulty,
+			difficulty_scale = Settings.difficultyScale,
+			ally_scale = Settings.allyScale,
+			heroes = Utilities:HeroStatsInGame(AllUnits),
+		}
+	end
+
+	local function ApplyDirective(resObj)
+		if type(resObj) ~= 'table' then return end
+		if ALLOW_DIFFICULTY_CONTROL and type(resObj.difficulty) == 'number' then
+			local newDifficulty = math.max(0, math.min(10, resObj.difficulty))
+			if newDifficulty ~= Settings.difficulty then
+				Settings.difficulty = newDifficulty
+				Settings.difficultyScale = Settings:CalculateDifficultyScale(newDifficulty)
+				if resObj.announce then
+					Utilities:Print(string.format('ML Director adjusted bot difficulty to %.1f', newDifficulty), MSG_WARNING)
+				end
+			end
+		end
+	end
+
+	local function SendSnapshot()
+		local ok, err = pcall(function()
+			local request = CreateHTTPRequest('POST', SERVER_URL..'/director')
+			request:SetHTTPRequestHeaderValue('Content-Type', 'application/json')
+			if ML.Api_Key ~= nil and ML.Api_Key ~= '' then
+				request:SetHTTPRequestHeaderValue('Authorization', ML.Api_Key)
+			end
+			request:SetHTTPRequestRawPostBody('application/json', mlJson.encode(BuildSnapshot()))
+			request:Send(function(response)
+				if response.StatusCode == 200 then
+					failureCount = 0
+					local success, resObj = pcall(function() return mlJson.decode(response.Body) end)
+					if success then ApplyDirective(resObj) end
+				else
+					CountFailure('server unreachable at '..SERVER_URL)
+				end
+			end)
+		end)
+		if not ok then
+			CountFailure('request construction failed: '..tostring(err))
+		end
+	end
+
+	function MLDirector:Tick()
+		if not isEnabled then return nil end
+		if CreateHTTPRequest == nil then
+			Disable('CreateHTTPRequest not available in this VM')
+			return nil
+		end
+		if Flags.isSettingsFinalized and Settings ~= nil and Settings.difficulty ~= nil then
+			SendSnapshot()
+		end
+		return INTERVAL
+	end
+
+	if isEnabled then
+		local ok, err = pcall(function()
+			Timers:CreateTimer(timerName, {endTime = INTERVAL, callback = function() return MLDirector:Tick() end})
+		end)
+		if ok then
+			print('[MLDirector] started, target server: '..SERVER_URL)
+		else
+			print('[MLDirector] Timers:CreateTimer FAILED: '..tostring(err))
+		end
+	else
+		print('[MLDirector] NOT starting: Customize.ML.Enable is false')
+	end
+end
 
 -- Instantiate ourself
 if FretBots == nil then
