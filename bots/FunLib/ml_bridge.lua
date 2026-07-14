@@ -41,6 +41,14 @@ local isEnabled = ML.Enable ~= false
 local failureCount = 0
 local lastSendTime = -9999
 local hasAnnouncedDisable = false
+local hasAnnouncedStart = false
+local hasAnnouncedSuccess = false
+local sendCount = 0
+
+-- Always announce on load so it's visible in console whether MLBridge is even
+-- running (search console / console.log for "MLBridge").
+print('[MLBridge] loaded. enabled='..tostring(isEnabled)..' server='..tostring(SERVER_URL)
+	..' (this line proves ml_bridge.lua is running in the bots VM)')
 
 -- FightIQ overrides received from the server; merged copy is what jmz reads.
 local effectiveFightIQ = nil
@@ -166,9 +174,13 @@ local function SendSnapshot(bot)
 			local success, resObj = pcall(function() return json.decode(result) end)
 			if success and type(resObj) == 'table' then
 				failureCount = 0
+				if not hasAnnouncedSuccess then
+					hasAnnouncedSuccess = true
+					print('[MLBridge] CONNECTED — server replied, live FightIQ tuning + dataset logging active.')
+				end
 				ApplyOverrides(resObj.fightiq)
 			else
-				CountFailure('server at '..SERVER_URL..' not answering')
+				CountFailure('server at '..SERVER_URL..' not answering (bad/empty response)')
 			end
 		end)
 	end)
@@ -198,6 +210,11 @@ function MLBridge.Think(bot)
 	if DotaTime() - lastSendTime < INTERVAL then return end
 	if not IsTeamCaptain(bot) then return end
 	lastSendTime = DotaTime()
+	if not hasAnnouncedStart then
+		hasAnnouncedStart = true
+		print('[MLBridge] first snapshot going out to '..SERVER_URL..'/policy ...')
+	end
+	sendCount = sendCount + 1
 	SendSnapshot(bot)
 end
 
