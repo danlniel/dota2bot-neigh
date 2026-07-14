@@ -196,6 +196,16 @@ function GetDesireHelper()
         return RemapValClamped(J.GetUnaccountedEnemyCount(), 2, 4, 0.55, BOT_MODE_DESIRE_HIGH)
     end
 
+    -- FightIQ A4: being kited by a longer-range attacker we can't reach.
+    -- Break away instead of standing and eating free damage — UNLESS the team
+    -- is committing (stronger with allies here to close the gap / dive them).
+    do
+        local bKited = J.IsBeingKitedByLongerRange(bot)
+        if bKited and not (bWeAreStronger and #nAllyHeroes >= #nEnemyHeroes) then
+            return RemapValClamped(botHP, 0.9, 0.3, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_HIGH)
+        end
+    end
+
     if X.LowChanceToRun() then
         return BOT_MODE_DESIRE_MODERATE
     end

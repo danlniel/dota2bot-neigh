@@ -35,7 +35,14 @@ enemy has heavy magic/disable, defensive items (Ghost/Glimmer/Force/Pipe) when
 behind, detection already present. Enemy-comp-aware insertions into the existing
 `sRoleItemsBuyList` flow. **Where:** `item_purchase_generic.lua`, `aba_item.lua`.
 
-### A4. Don't eat free damage from long-range attackers (e.g. Sniper)
+### A4. Don't eat free damage from long-range attackers (e.g. Sniper) — ✅ parts 1&2 (2026-07-14)
+**Shipped:** `jmz.IsBeingKitedByLongerRange(bot)` (enemy out-ranges us by
+`Long_Range_Margin`, sits beyond our reach, is hitting us) → `mode_retreat`
+breaks away instead of tanking, unless the team is committing (stronger + allies
+here to close). Target scoring upweights squishy long-range backliners
+(attack range ≥ 550). Config: `FightIQ.Avoid_Long_Range` / `Long_Range_Margin`.
+Part 3 (Blade Mail / gap-close itemization) lands with A3 below.
+_original notes:_
 **Problem (user-reported):** vs a far-out-of-reach Sniper/Drow/etc, bots just
 stand and tank auto-attacks doing nothing. Pros never accept free damage — they
 disengage out of range, close the gap, or focus the ranged carry.

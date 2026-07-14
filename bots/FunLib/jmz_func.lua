@@ -3659,6 +3659,30 @@ function J.IsTeamDominating()
 	return J.GetNumOfTeamTotalKills(false) >= J.GetNumOfTeamTotalKills(true) + nLead
 end
 
+-- Being kited by a longer-range attacker (roadmap A4): taking auto-attack
+-- damage from an enemy hero whose attack range exceeds ours by a margin, while
+-- they sit outside our reach. Standing still eating it is the exact "just
+-- accept all damage doing nothing" behavior to avoid. Returns (true, enemy).
+function J.IsBeingKitedByLongerRange(bot)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Avoid_Long_Range == false then return false, nil end
+	if not bot:WasRecentlyDamagedByAnyHero(1.5) then return false, nil end
+
+	local botRange = bot:GetAttackRange()
+	local margin = iq.Long_Range_Margin or 150
+	for _, enemy in pairs(J.GetEnemiesNearLoc(bot:GetLocation(), 1600)) do
+		if J.IsValidHero(enemy) and enemy:CanBeSeen()
+		and not J.IsSuspiciousIllusion(enemy)
+		and enemy:GetAttackRange() > botRange + margin
+		and GetUnitToUnitDistance(bot, enemy) > botRange + 100
+		and (enemy:GetAttackTarget() == bot or bot:WasRecentlyDamagedByHero(enemy, 1.5))
+		then
+			return true, enemy
+		end
+	end
+	return false, nil
+end
+
 -- Deep in enemy territory, no ally nearby, and 2+ enemies unaccounted for:
 -- the setup every human gank squad looks for. Used to back bots off —
 -- unless the team is dominating, in which case pressing into enemy
@@ -3734,6 +3758,11 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
 					-- alternative can still win)
 					if nCalledTarget ~= nil and unit == nCalledTarget then
 						score = score - unit:GetMaxHealth() * (iq.Team_Focus_Bonus or 0.25)
+					end
+					-- prioritize squishy long-range backliners (Sniper/Drow/OD):
+					-- highest sustained damage, easiest to burst — kill them first
+					if iq.Avoid_Long_Range ~= false and unit:GetAttackRange() >= 550 then
+						score = score - unit:GetMaxHealth() * 0.06
 					end
 					-- prefer closer targets over far chases
 					score = score + distance * 0.15

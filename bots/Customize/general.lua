@@ -188,6 +188,12 @@ Customize.FightIQ = {
     -- dead enemy core is treated as a likely defender past Buyback_Min_Time.
     Buyback_Awareness = true,
     Buyback_Min_Time = 15,   -- minutes; before this, buyback rarely matters
+
+    -- Anti long-range (e.g. Sniper): when out-ranged and unable to reach the
+    -- attacker, break away instead of tanking free hits; and prioritize
+    -- squishy long-range backliners as kill targets.
+    Avoid_Long_Range = true,
+    Long_Range_Margin = 150,  -- enemy must out-range us by this much to trigger
 }
 
 -- Farm IQ: make bots farm like players so their gold is earned, not injected.
