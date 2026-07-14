@@ -435,6 +435,20 @@ local function IsBotAlone(bot, nRadius)
     end
     return true
 end
+-- Kill-lead dominance (native sums; jmz would be a circular require here).
+-- A dominating team farms the enemy jungle instead of avoiding it.
+local function IsTeamDominating()
+    local iq = SiteCustomize and SiteCustomize.FightIQ
+    local nLead = (iq and iq.Dominance_Kill_Lead) or 6
+    local ally, enemy = 0, 0
+    for ____, id in ipairs(GetTeamPlayers(GetTeam())) do
+        ally = ally + (GetHeroKills(id) or 0)
+    end
+    for ____, id in ipairs(GetTeamPlayers(GetOpposingTeam())) do
+        enemy = enemy + (GetHeroKills(id) or 0)
+    end
+    return ally >= enemy + nLead
+end
 -- A camp is dangerous when an enemy hero was seen near it recently, or when
 -- it lies on the enemy half while the bot is alone with 2+ enemies
 -- unaccounted for (the classic gank setup humans punish).
@@ -446,7 +460,7 @@ ____exports.IsCampDangerous = function(bot, camp)
             return true
         end
     end
-    if AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500) then
+    if AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500) and not IsTeamDominating() then
         local ownAncient = GetAncient(GetTeam())
         local enemyAncient = GetAncient(GetOpposingTeam())
         if ownAncient ~= nil and enemyAncient ~= nil
@@ -509,7 +523,8 @@ ____exports.GetClosestNeutralSpwan = function(bot, availableCampList)
     local closestCamp = nil
     -- hoist enemy intel out of the camp loop (one scan per call, not per camp)
     local recentLocs, missingCount = GetEnemyIntel()
-    local bCheckDeep = AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500)
+    local bDominating = IsTeamDominating()
+    local bCheckDeep = AvoidDeepSoloEnabled() and missingCount >= 2 and IsBotAlone(bot, 1500) and not bDominating
     local ownAncient = bCheckDeep and GetAncient(GetTeam()) or nil
     local enemyAncient = bCheckDeep and GetAncient(GetOpposingTeam()) or nil
     for ____, camp in ipairs(availableCampList) do
@@ -526,7 +541,8 @@ ____exports.GetClosestNeutralSpwan = function(bot, availableCampList)
         end
         local dist = GetUnitToLocationDistance(bot, camp.cattr.location)
         if ____exports.IsEnemyCamp(camp) then
-            dist = dist * 1.5
+            -- dominating teams take enemy camps almost as readily as their own
+            dist = dist * (bDominating and 1.15 or 1.5)
         end
         if not dangerous and ____exports.IsTheClosestOne(bot, camp.cattr.location) and dist < minDist and (bot:GetLevel() >= 10 or not ____exports.IsAncientCamp(camp)) then
             minDist = dist

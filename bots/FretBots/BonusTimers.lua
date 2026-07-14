@@ -442,16 +442,9 @@ function BonusTimers:GameStartBonus()
 	for team = 2, 3 do
 	local msg = 'Bots given starting bonuses:'
 	local awarded = false
-	if Settings.difficulty >= 1 then
-		for _, bot in pairs(AllBots[team]) do
-			-- HP regen
-			bot:SetBaseHealthRegen(bot:GetBaseHealthRegen() * Utilities:RemapValClamped(Settings.difficultyScale / bot:GetBaseHealthRegen(), 0, 10, 1.2, 6))
-			-- Mana regen
-			bot:SetBaseManaRegen(bot:GetBaseManaRegen() * Utilities:RemapValClamped(Settings.difficultyScale / bot:GetBaseManaRegen(), 0, 10, 1.6, 10))
-			-- bot:SetHPRegenGain(5 * Settings.difficultyScale)
-			-- bot:SetManaRegenGain(5 * Settings.difficultyScale)
-		end
-	end
+	-- Difficulty = economy only: the HP/mana regen multipliers that used to
+	-- scale with difficulty were a stat cheat, not economy — removed.
+	-- (Difficulty now only drives gold/XP awards.)
 	if Settings.difficulty >= 5 and Settings.deathBonus.maxAwards <= 2 then
 		-- never exceed the number of configured award types, otherwise the
 		-- per-death cap stops binding (e.g. order trimmed to 3 types at

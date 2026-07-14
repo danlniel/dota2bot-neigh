@@ -109,7 +109,12 @@
 		{
 			-- Order awards are given (useful when maxAwards is less than number of types)
 			-- this also defines the names of the types (used to index tables for other settings)
-			order = {'levels', 'gold', 'neutral'},
+			-- DIFFICULTY = ECONOMY ONLY (2026-07-14): death bonuses are
+			-- limited to gold and levels (i.e. gold/XP). Neutral-item
+			-- advantage, stat/armor boosts and start bonuses are no longer
+			-- tied to difficulty — bot smartness is always at maximum and
+			-- neutrals arrive at human-equivalent timings.
+			order = {'gold', 'levels'},
 			--The maximum number of awards per death
 			maxAwards = 2,
 			-- individual bonus enables
@@ -119,7 +124,7 @@
 				armor 			= false,
 				magicResist 	= false,
 				levels 			= true,
-				neutral 		= true,
+				neutral 		= false,
 				stats 			= false
 			},
 			-- Further option to only enable if the bots are behind in kills
@@ -317,22 +322,24 @@
 		-- One Time awards (granted at game start)
 		-- note that neutral is not the count, it is the tier
 		-- still, it's probably better to just fix neutral timing rather than award one here
+		-- Start bonuses removed (roadmap 05 step 2 / economy-only difficulty):
+		-- everyone starts fair; ongoing gpm/xpm handles the difficulty.
 		gameStartBonus =
 		{
-				gold 			= 100,
+				gold 			= 0,
 				armor 			= 0,
 				magicResist 	= 0,
-				levels 			= 0.5,
+				levels 			= 0,
 				neutral       	= 0,
 				stats 			= 0,
 		},
 		gameStartBonusTimesDifficulty =
 		{
-				gold 			= 30,
+				gold 			= 0,
 				armor 			= 0,
 				magicResist 	= 0,
 				levels 			= 0,
-				neutral       	= 1,
+				neutral       	= 0,
 				stats 			= 0
 		},
 		-- caps for awards per game

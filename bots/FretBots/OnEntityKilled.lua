@@ -84,7 +84,9 @@ end
 function EntityKilled:OnLevelUp(event)
 	local hero = EntIndexToHScript(event.hero_entindex)
 	if hero ~= nil and PlayerResource:GetSteamID(event.player_id) == PlayerResource:GetSteamID(100) then
-		if Settings.difficulty >= 5 then
+		-- Difficulty = economy only: the death-XP reduction that punished
+		-- humans at difficulty >= 5 is disabled (never true).
+		if false and Settings.difficulty >= 5 then
 			local orig, new = hero:GetDeathXP(), 0
 			-- 减少死亡经验奖励
 			if Utilities:IsTurboMode() then

@@ -178,6 +178,10 @@ Customize.FightIQ = {
     -- unaccounted for (the classic gank setup). Applies to camp selection
     -- and retreat desire — bots stop feeding solo pickoffs.
     Avoid_Deep_Solo = true,
+
+    -- Kill lead at which the team plays like it's winning: deep-solo caution
+    -- switches off and bots start farming/invading the ENEMY jungle.
+    Dominance_Kill_Lead = 6,
 }
 
 -- Farm IQ: make bots farm like players so their gold is earned, not injected.

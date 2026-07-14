@@ -3549,7 +3549,7 @@ local function ConsiderHuntCall(bot, iq)
 	if iq.Team_Hunt == false then return end
 	if J.IsInLaningPhase() then return end
 
-	for _, enemy in pairs(J.GetEnemiesNearLoc(bot:GetLocation(), 2500)) do
+	for _, enemy in pairs(J.GetEnemiesNearLoc(bot:GetLocation(), 3000)) do
 		if J.IsValidHero(enemy)
 		and enemy:CanBeSeen()
 		and not J.IsSuspiciousIllusion(enemy)
@@ -3604,13 +3604,24 @@ function J.GetUnaccountedEnemyCount()
 	return n
 end
 
+-- True when the bot's team is far enough ahead on kills to play in enemy
+-- territory with confidence (threshold ML-tunable via FightIQ).
+function J.IsTeamDominating()
+	local iq = GetFightIQ()
+	local nLead = (iq and iq.Dominance_Kill_Lead) or 6
+	return J.GetNumOfTeamTotalKills(false) >= J.GetNumOfTeamTotalKills(true) + nLead
+end
+
 -- Deep in enemy territory, no ally nearby, and 2+ enemies unaccounted for:
--- the setup every human gank squad looks for. Used to back bots off.
+-- the setup every human gank squad looks for. Used to back bots off —
+-- unless the team is dominating, in which case pressing into enemy
+-- territory is exactly what a winning team should do.
 function J.IsDeepAloneAndBlind(bot)
 	local iq = GetFightIQ()
 	if iq == nil or iq.Avoid_Deep_Solo == false then return false end
 	if J.IsInAllyArea(bot) then return false end
 	if #J.GetAlliesNearLoc(bot:GetLocation(), 1500) > 1 then return false end
+	if J.IsTeamDominating() then return false end
 	return J.GetUnaccountedEnemyCount() >= 2
 end
 

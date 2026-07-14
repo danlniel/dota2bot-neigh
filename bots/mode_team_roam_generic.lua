@@ -131,7 +131,7 @@ function GetDesireHelper()
     -- group hunt: converge on the team's called pick-off target
     local nHuntTarget = J.GetTeamFocusTarget()
     if nHuntTarget ~= nil and #nearbyAllies >= 2
-    and GetUnitToUnitDistance(bot, nHuntTarget) <= 3500
+    and GetUnitToUnitDistance(bot, nHuntTarget) <= 4000
     and not J.IsRetreating(bot) then
         SetStickyTarget(nHuntTarget)
         targetUnit = nHuntTarget

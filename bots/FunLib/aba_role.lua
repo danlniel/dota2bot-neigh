@@ -138,7 +138,9 @@ ____exports.UpdateInvisEnemyStatus = function(bot)
             end
         end
         globalEnemyCheck = true
-    elseif globalEnemyCheck == true and DotaTime() > 10 * 60 and DotaTime() > lastCheck + 3 then
+    -- scan from 5min (was 10): Shadow Blades appear from ~8min, and supports
+    -- need lead time to buy and deliver dust
+    elseif globalEnemyCheck == true and DotaTime() > 5 * 60 and DotaTime() > lastCheck + 3 then
         local enemies = bot:GetNearbyHeroes(1600, true, 0)
         if #enemies > 0 then
             do
