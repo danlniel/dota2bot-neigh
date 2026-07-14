@@ -388,6 +388,36 @@ ____exports.GetCampStackTime = function(camp)
     end
     return 56
 end
+-- C2 multi-camp stacking: nearest camp (from the available list) that has a
+-- valid stack spot, is within maxRange, and has no human ally nearby. Returns
+-- camp, stackLoc or nil. Lets a support opportunistically stack whichever camp
+-- is closest each minute-mark instead of only the one it happens to be farming.
+local function _humanAllyNearLoc(loc, radius)
+    for ____, id in ipairs(GetTeamPlayers(GetTeam())) do
+        if not IsPlayerBot(id) and IsHeroAlive(id) then
+            local member = GetTeamMember(id)
+            if member ~= nil and GetUnitToLocationDistance(member, loc) <= radius then
+                return true
+            end
+        end
+    end
+    return false
+end
+____exports.GetNearestStackableCamp = function(bot, availableCampList, maxRange)
+    if availableCampList == nil then return nil end
+    local best, bestLoc, bestDist = nil, nil, maxRange or 2500
+    for ____, camp in ipairs(availableCampList) do
+        if not ____exports.IsEnemyCamp(camp) then
+            local loc = camp.cattr.location
+            local stackLoc = ____exports.GetCampMoveToStack(camp.idx)
+            local dist = GetUnitToLocationDistance(bot, loc)
+            if stackLoc ~= nil and dist < bestDist and not _humanAllyNearLoc(loc, 1400) then
+                best, bestLoc, bestDist = camp, stackLoc, dist
+            end
+        end
+    end
+    return best, bestLoc
+end
 local SiteCustomize
 if GetScriptDirectory ~= nil and GetScriptDirectory() == "bots" then
     SiteCustomize = require("bots.FunLib.custom_loader")

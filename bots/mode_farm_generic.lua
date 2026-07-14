@@ -622,6 +622,29 @@ function Think()
 			end
 		end
 
+		-- C2 multi-camp stacking: a support in the stack window heads to the
+		-- NEAREST stackable camp (not only the one it's farming), so across
+		-- successive minute-marks it stacks several camps for the cores. Only
+		-- when safe (no enemy near, healthy) so it never trades a stack for a death.
+		if Customize.FarmIQ and Customize.FarmIQ.Enable ~= false and Customize.FarmIQ.Multi_Stack ~= false
+		and not J.IsCore(bot) and sec >= 50 and sec <= 58
+		and J.GetHP(bot) > 0.55
+		and #J.GetEnemiesNearLoc(bot:GetLocation(), 1600) == 0
+		then
+			local nCamp, vStackLoc = J.Site.GetNearestStackableCamp(bot, availableCamp, 2500)
+			if nCamp ~= nil and vStackLoc ~= nil then
+				local nNear = bot:GetNearbyNeutralCreeps(700)
+				-- close to the camp already and it has creeps -> pull them to stack;
+				-- otherwise walk to the camp to be in position for the pull.
+				if GetUnitToLocationDistance(bot, nCamp.cattr.location) <= 700 and #nNear > 0 then
+					bot:Action_MoveToLocation(vStackLoc)
+				else
+					bot:Action_MoveToLocation(nCamp.cattr.location)
+				end
+				return
+			end
+		end
+
 		-- Don't steal farm from an ally already at this camp
 		local nAllyNearCamp = J.GetAlliesNearLoc(targetFarmLoc, 800)
 		local bAllyFarming = false

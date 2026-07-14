@@ -103,9 +103,14 @@ when ahead. **Where:** `mode_laning_generic.lua`, `mode_farm_generic.lua`.
 Smoke is only auto-cast today. Add "smoke the group onto a called target"
 routing, tied to the existing team-focus/hunt call system.
 
-### C2. Multi-camp support stacking
-Current stacking is single-camp self-serve. Route a support to stack 2–3 camps
-at :53–:00; let cores collect big stacks.
+### C2. Multi-camp support stacking — ✅ (2026-07-14)
+**Shipped:** `jmz.Site.GetNearestStackableCamp` + a farm-Think hook — a support
+in the stack window (:50–:58) that's safe (healthy, no enemy within 1600) heads
+to the NEAREST stackable camp (not just the one it's farming) and pulls it.
+Across successive minute-marks a roaming support covers several camps for the
+cores. Config: `FarmIQ.Multi_Stack`. (Realistic scope: opportunistic nearest-camp
+per window, not a guaranteed 2–3-camp route in one window — that needs pathing
+we can't validate blind.)
 
 ## Cross-cutting note
 Every scriptable behavior above also becomes a **feature or reward signal** the

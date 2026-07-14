@@ -214,6 +214,10 @@ Customize.FarmIQ = {
     -- spawn box so the camp respawns stacked (skipped if a human is nearby).
     Stack_Camps = true,
 
+    -- Supports head to the nearest stackable camp during the stack window
+    -- (:50-:58) even if not farming it, covering several camps over the game.
+    Multi_Stack = true,
+
     -- When there is nothing to farm, walk to the nearest safe lane front and
     -- take free creeps instead of idling toward the middle of the map.
     Lane_Fallback = true,
