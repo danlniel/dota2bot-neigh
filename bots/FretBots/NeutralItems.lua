@@ -440,8 +440,6 @@ end
 	| 1.5           | 0    | 120  | 720  | 2020 | 3600 |
 --]]
 function NeutralItems:GetTimingDifficultyScaleShift(tier)
-	-- Difficulty = economy only: bots receive neutral items at the default
-	-- (human-equivalent) timings regardless of difficulty. This shift maps
-	-- timings[tier] exactly onto timingsDefault[tier].
-	return Settings.neutralItems.timingsDefault[tier] - Settings.neutralItems.timings[tier]
+	local timingDifficultyShift = (Settings.neutralItems.timingsDefault[tier] - Settings.neutralItems.timings[tier]) * (1 - math.min(Settings.difficultyScale, 2))
+	return timingDifficultyShift
 end
