@@ -28,6 +28,24 @@ enemy has heavy magic/disable, defensive items (Ghost/Glimmer/Force/Pipe) when
 behind, detection already present. Enemy-comp-aware insertions into the existing
 `sRoleItemsBuyList` flow. **Where:** `item_purchase_generic.lua`, `aba_item.lua`.
 
+### A4. Don't eat free damage from long-range attackers (e.g. Sniper)
+**Problem (user-reported):** vs a far-out-of-reach Sniper/Drow/etc, bots just
+stand and tank auto-attacks doing nothing. Pros never accept free damage — they
+disengage out of range, close the gap, or focus the ranged carry.
+**Three parts:**
+- *Positioning/retreat:* if taking auto-attack damage from an enemy whose attack
+  range exceeds ours AND we can't reach them this instant (no mobility up, they
+  keep kiting) → break line of sight / retreat out of their range instead of
+  standing. Add a "being kited by longer range" check feeding retreat desire.
+  **Where:** `mode_retreat_generic.lua`, `utils.lua` positioning.
+- *Focus priority:* the team-focus / hunt system (already built) should upweight
+  squishy high-attack-range backliners (Sniper/Drow/OD) as kill targets —
+  they're the ones melting us and the easiest to burst. **Where:** `jmz_func.lua`
+  target scoring + hunt-call selection.
+- *Itemization (rides on A3):* buy/use Blade Mail vs heavy right-click carries;
+  mobility/gap-close (Blink/Force) or Pipe/BKB to reach or survive them.
+**Cheap-ish** — reuses retreat, the focus/hunt call, and the A3 item hooks.
+
 ## Tier B — high impact, more effort
 
 ### B1. Proactive power-spike timing
