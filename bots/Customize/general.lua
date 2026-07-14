@@ -177,6 +177,10 @@ Customize.FightIQ = {
     -- converge to pick them off together (never under enemy towers).
     Team_Hunt = true,
 
+    -- Smoke-gank: when a pick-off target is called and the grouped team is a
+    -- rotation away, use Smoke of Deceit to approach it unseen.
+    Smoke_Gank = true,
+
     -- Back off when deep in enemy territory alone while 2+ enemies are
     -- unaccounted for (the classic gank setup). Applies to camp selection
     -- and retreat desire — bots stop feeding solo pickoffs.

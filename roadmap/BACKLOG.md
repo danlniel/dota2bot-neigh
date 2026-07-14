@@ -99,9 +99,13 @@ when ahead. **Where:** `mode_laning_generic.lua`, `mode_farm_generic.lua`.
 
 ## Tier C — polish
 
-### C1. Smoke-gank coordination
-Smoke is only auto-cast today. Add "smoke the group onto a called target"
-routing, tied to the existing team-focus/hunt call system.
+### C1. Smoke-gank coordination — ✅ (2026-07-14)
+**Shipped:** the smoke ConsiderItemDesire now returns HIGH when the FightIQ
+hunt/focus system has a called pick-off target (`J.GetTeamFocusTarget()`), the
+team is grouped (≥2 allies near), the target is a rotation away (>2500), and
+it's safe to smoke (no enemy/tower on us, not recently damaged). The existing
+group-hunt converge in `mode_team_roam` then walks the smoked group onto the
+target. Config: `FightIQ.Smoke_Gank`.
 
 ### C2. Multi-camp support stacking — ✅ (2026-07-14)
 **Shipped:** `jmz.Site.GetNearestStackableCamp` + a farm-Think hook — a support

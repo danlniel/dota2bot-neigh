@@ -6936,6 +6936,25 @@ X.ConsiderItemDesire['item_smoke_of_deceit'] = function(item)
 		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 	end
 
+	-- C1 smoke-gank: when the team has called a pick-off target (the hunt/focus
+	-- call from FightIQ) and we're grouped but the target is still a rotation
+	-- away, smoke up to approach it unseen. Only when it's safe to smoke (no
+	-- enemy/tower on us) and the target is far enough that smoke actually helps.
+	local iqFocus = Customize.FightIQ
+	if (iqFocus == nil or iqFocus.Smoke_Gank ~= false)
+	and #nInRangeEnemy == 0 and #nInRangeTower == 0
+	then
+		local nHuntTarget = J.GetTeamFocusTarget()
+		if nHuntTarget ~= nil
+		and #nInRangeAlly >= 2
+		and GetUnitToUnitDistance(bot, nHuntTarget) > 2500
+		and not bot:WasRecentlyDamagedByAnyHero(3.0)
+		then
+			hEffectTarget = bot
+			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+		end
+	end
+
 	if (nInRangeEnemy ~= nil and #nInRangeEnemy == 0)
 	or (nInRangeTower ~= nil and #nInRangeTower == 0)
 	then
