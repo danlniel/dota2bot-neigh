@@ -7,6 +7,61 @@ local Item = require( GetScriptDirectory()..'/FunLib/aba_item' )
 local Role = require( GetScriptDirectory()..'/FunLib/aba_role' )
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
 local Utils = require( GetScriptDirectory()..'/FunLib/utils')
+local Customize = require( GetScriptDirectory()..'/FunLib/custom_loader')
+
+-- Reactive itemization (roadmap A3): buy a situational defensive item when the
+-- enemy threat calls for it, following the codebase's proven direct-purchase
+-- pattern (same as the dust/clarity buys below). Recipe items are only bought
+-- when fully affordable so we never half-build and stall the main queue.
+-- Runs at most once per few seconds and buys at most one reactive item.
+local reactiveNextCheck = 0
+local function _reactiveOwnedOrBuilding(itemName)
+	if J.HasItem(bot, itemName) then return true end
+	-- also skip if it's already in the hero's planned build (avoid double-buy)
+	if bot.currBuyingItemInPurchaseList == itemName then return true end
+	return false
+end
+local function _tryReactiveBuy(itemName)
+	if _reactiveOwnedOrBuilding(itemName) then return false end
+	if Item.GetEmptyInventoryAmount(bot) < 1 then return false end
+	if bot:GetGold() < GetItemCost(itemName) then return false end
+	return bot:ActionImmediate_PurchaseItem(itemName) == PURCHASE_ITEM_SUCCESS
+end
+local function ReactiveItemPurchase()
+	local iq = Customize.ItemIQ
+	if iq == nil or iq.Enable == false then return end
+	if DotaTime() < reactiveNextCheck then return end
+	reactiveNextCheck = DotaTime() + 4
+	if not bot:IsAlive() or DotaTime() < 0 then return end
+
+	local bSquishy = Role.IsSupport(bot) or bot:GetPrimaryAttribute() ~= ATTRIBUTE_STRENGTH
+
+	-- 1) Physical right-click / long-range beating on us (the Sniper case):
+	--    squishy -> Ghost Scepter (immune to physical); durable core -> Blade Mail
+	if iq.Anti_Physical ~= false then
+		local bKited, kiter = J.IsBeingKitedByLongerRange(bot)
+		local bHardHit = bot:WasRecentlyDamagedByAnyHero(2.0) and J.GetHP(bot) < 0.6
+		if bKited or bHardHit then
+			if bSquishy then
+				if _tryReactiveBuy('item_ghost') then return end
+			elseif not Role.IsSupport(bot) then
+				if _tryReactiveBuy('item_blade_mail') then return end
+			end
+		end
+	end
+
+	-- 2) Enemy magic-heavy and we're squishy -> cheap Cloak now, BKB later
+	--    (BKB usually already in core builds, so only nudge Cloak here).
+	if iq.Anti_Magic ~= false and bSquishy then
+		local nNukers = 0
+		for _, e in pairs(J.GetEnemyList(bot, 1600)) do
+			if J.IsValidHero(e) and Role.IsNuker(e) then nNukers = nNukers + 1 end
+		end
+		if nNukers >= 2 and DotaTime() < 20 * 60 then
+			if _tryReactiveBuy('item_cloak') then return end
+		end
+	end
+end
 
 local X = {}
 
@@ -438,6 +493,9 @@ end
 
 function ItemPurchaseThink()
 	currentTime = DotaTime()
+
+	-- reactive defensive items (A3) — augments the static build, gold-gated
+	ReactiveItemPurchase()
 
 	-- ARDM: detect stale hero instance and rebuild purchase list on hero swap
 	local isStale, freshBot, freshName = J.IsStaleARDMHero(bot, botName)

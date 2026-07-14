@@ -209,6 +209,18 @@ Customize.FarmIQ = {
     Lane_Fallback = true,
 }
 
+-- Item IQ: reactive itemization on top of each hero's static build. Buys a
+-- situational defensive item when the enemy threat calls for it (only when
+-- fully affordable, so it never stalls the main build).
+Customize.ItemIQ = {
+    Enable = true,
+    -- vs physical right-click / long range (Sniper/Drow/PA): squishy heroes
+    -- grab Ghost Scepter, durable cores grab Blade Mail.
+    Anti_Physical = true,
+    -- vs 2+ magic nukers early: squishy heroes grab a cheap Cloak.
+    Anti_Magic = true,
+}
+
 -- ML integration: connect the bots to a local model server (see ml/README.md).
 -- Run `python3 ml/server.py` before the game; without a server the bridge
 -- disables itself after a few attempts and static settings apply.

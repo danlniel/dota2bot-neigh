@@ -29,11 +29,16 @@ the `[MLBridge]` console line (HTTPS-in-bots-VM vs `CreateRemoteHTTPRequest`).
 is still a 5-feature linear fit — grow it once real data flows; consider the
 director itself becoming ML-driven. **Where:** `ml/`, `bots/FunLib/ml_bridge.lua`.
 
-### A3. Reactive itemization (user #3)
-**Gap:** builds are static; only reaction is dust-vs-invis. **Add:** BKB when
-enemy has heavy magic/disable, defensive items (Ghost/Glimmer/Force/Pipe) when
-behind, detection already present. Enemy-comp-aware insertions into the existing
-`sRoleItemsBuyList` flow. **Where:** `item_purchase_generic.lua`, `aba_item.lua`.
+### A3. Reactive itemization (user #3) — ✅ v1 (2026-07-14)
+**Gap:** builds were static; only reaction was dust-vs-invis.
+**Shipped v1:** `ReactiveItemPurchase()` in `item_purchase_generic.lua` (runs
+each think, ≤1 buy per 4s, gold-gated so it never stalls the main build):
+- vs physical right-click / being long-range-kited → squishy heroes buy
+  **Ghost Scepter**, durable cores buy **Blade Mail** (this is A4 part 3).
+- vs 2+ enemy nukers early + squishy → cheap **Cloak**.
+Config: `Customize.ItemIQ` (`Anti_Physical` / `Anti_Magic`).
+**Phase 2 (todo):** BKB timing vs heavy magic/disable for cores, Pipe/Glimmer
+when team behind, Force/Blink gap-close vs kiters, comp-aware core-build swaps.
 
 ### A4. Don't eat free damage from long-range attackers (e.g. Sniper) — ✅ parts 1&2 (2026-07-14)
 **Shipped:** `jmz.IsBeingKitedByLongerRange(bot)` (enemy out-ranges us by
