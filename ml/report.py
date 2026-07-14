@@ -98,10 +98,19 @@ def advantage(row):
     return kg + nwg
 
 
-def sparkline(values):
+def sparkline(values, width=60):
     bars = " ▁▂▃▄▅▆▇█"
     if not values:
         return ""
+    # downsample to a fixed width (average within each bucket) so long games
+    # don't print hundreds of characters
+    if len(values) > width:
+        bucket = len(values) / width
+        sampled = []
+        for i in range(width):
+            chunk = values[int(i * bucket):int((i + 1) * bucket)] or [values[-1]]
+            sampled.append(sum(chunk) / len(chunk))
+        values = sampled
     lo, hi = min(values), max(values)
     span = (hi - lo) or 1.0
     return "".join(bars[min(8, int((v - lo) / span * 8))] for v in values)
