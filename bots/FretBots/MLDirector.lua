@@ -8,11 +8,15 @@
 -- Fail-safe: disables itself after consecutive failures or when turned off in
 -- Customize; never touches settings before they are finalized.
 
+print('[MLDirector] file executing...')
+
 require 'bots.FretBots.Timers'
 require 'bots.FretBots.Utilities'
 require 'bots.FretBots.Flags'
+print('[MLDirector] FretBots deps loaded')
 
 local json = require('bots.ts_libs.utils.json')
+print('[MLDirector] json loaded')
 
 local Customize
 if GetScriptDirectory ~= nil and GetScriptDirectory() == 'bots' then
@@ -20,6 +24,9 @@ if GetScriptDirectory ~= nil and GetScriptDirectory() == 'bots' then
 else
 	Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 end
+print('[MLDirector] Customize loaded: ML='..tostring(Customize.ML ~= nil)
+	..' Enable='..tostring(Customize.ML and Customize.ML.Enable)
+	..' Server='..tostring(Customize.ML and Customize.ML.Server))
 
 MLDirector = MLDirector or {}
 
@@ -113,8 +120,17 @@ function MLDirector:Tick()
 end
 
 function MLDirector:Initialize()
-	if not isEnabled then return end
-	Timers:CreateTimer(timerName, {endTime = INTERVAL, callback = function() return MLDirector:Tick() end})
+	if not isEnabled then
+		print('[MLDirector] NOT starting: Customize.ML.Enable is false')
+		return
+	end
+	local ok, err = pcall(function()
+		Timers:CreateTimer(timerName, {endTime = INTERVAL, callback = function() return MLDirector:Tick() end})
+	end)
+	if not ok then
+		print('[MLDirector] Timers:CreateTimer FAILED: '..tostring(err))
+		return
+	end
 	print('[MLDirector] started, target server: '..SERVER_URL)
 end
 
