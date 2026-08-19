@@ -140,6 +140,12 @@ Customize.ThinkLess = 0;
 Customize.FightIQ = {
     Enable = true,
 
+    -- Print throttled '[IQ] ...' lines to the game console whenever a FightIQ /
+    -- ItemIQ feature fires (kite detection, team focus calls, smoke-ganks,
+    -- reactive item buys). Launch Dota with -condebug to also get them in
+    -- console.log. Set false once satisfied the features work.
+    Debug = true,
+
     -- Bots only commit to fights when their estimated team power exceeds the enemy's by this ratio.
     -- 1.0 = original coin-flip (dives everything); higher = pickier, only fights it's winning.
     -- 1.10 = disciplined: refuses even/losing fights (harder to beat), still commits when ahead.

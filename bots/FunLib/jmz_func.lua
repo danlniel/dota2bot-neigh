@@ -50,6 +50,18 @@ local function GetFightIQ()
 	return iq
 end
 
+local function IQDebug(msg)
+	local iq = GetFightIQ()
+	if iq ~= nil and iq.Debug == true then
+		print('[IQ] '..msg)
+	end
+end
+
+-- One-time load announce: proves THIS copy of the scripts is what the game
+-- loaded, and the printed table address shows whether bots share a team VM
+-- (one identical line per team) or run isolated (one distinct line per bot).
+IQDebug('FightIQ lib loaded (build 2026-08-19), vm='..tostring(J))
+
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
 	-- A place to change the bot setup.
@@ -3560,6 +3572,8 @@ local function ConsiderHuntCall(bot, iq)
 		then
 			teamFocusTarget = enemy
 			teamFocusCallTime = DotaTime()
+			IQDebug('hunt call by '..bot:GetUnitName()..' -> '..enemy:GetUnitName()
+				..' vm='..tostring(J))
 			return
 		end
 	end
@@ -3586,6 +3600,8 @@ function J.ConsiderTeamFocus(bot)
 	if nTarget ~= nil then
 		teamFocusTarget = nTarget
 		teamFocusCallTime = DotaTime()
+		IQDebug('focus call by '..bot:GetUnitName()..' -> '..nTarget:GetUnitName()
+			..' vm='..tostring(J))
 	end
 end
 
@@ -3724,6 +3740,7 @@ end
 -- damage from an enemy hero whose attack range exceeds ours by a margin, while
 -- they sit outside our reach. Standing still eating it is the exact "just
 -- accept all damage doing nothing" behavior to avoid. Returns (true, enemy).
+local kiteDebugNext = {}
 function J.IsBeingKitedByLongerRange(bot)
 	local iq = GetFightIQ()
 	if iq == nil or iq.Avoid_Long_Range == false then return false, nil end
@@ -3738,6 +3755,12 @@ function J.IsBeingKitedByLongerRange(bot)
 		and GetUnitToUnitDistance(bot, enemy) > botRange + 100
 		and (enemy:GetAttackTarget() == bot or bot:WasRecentlyDamagedByHero(enemy, 1.5))
 		then
+			local sBotName = bot:GetUnitName()
+			if DotaTime() > (kiteDebugNext[sBotName] or 0) then
+				kiteDebugNext[sBotName] = DotaTime() + 5
+				IQDebug(sBotName..' kited by '..enemy:GetUnitName()
+					..' (range '..enemy:GetAttackRange()..' vs '..botRange..')')
+			end
 			return true, enemy
 		end
 	end

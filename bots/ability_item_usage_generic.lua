@@ -6950,6 +6950,11 @@ X.ConsiderItemDesire['item_smoke_of_deceit'] = function(item)
 		and GetUnitToUnitDistance(bot, nHuntTarget) > 2500
 		and not bot:WasRecentlyDamagedByAnyHero(3.0)
 		then
+			if iqFocus ~= nil and iqFocus.Debug == true
+			and DotaTime() > (bot.lastSmokeGankDebug or 0) + 5 then
+				bot.lastSmokeGankDebug = DotaTime()
+				print('[IQ] '..bot:GetUnitName()..' smoke-gank onto '..nHuntTarget:GetUnitName())
+			end
 			hEffectTarget = bot
 			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 		end

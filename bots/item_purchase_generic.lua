@@ -25,7 +25,15 @@ local function _tryReactiveBuy(itemName)
 	if _reactiveOwnedOrBuilding(itemName) then return false end
 	if Item.GetEmptyInventoryAmount(bot) < 1 then return false end
 	if bot:GetGold() < GetItemCost(itemName) then return false end
-	return bot:ActionImmediate_PurchaseItem(itemName) == PURCHASE_ITEM_SUCCESS
+	local nResult = bot:ActionImmediate_PurchaseItem(itemName)
+	-- Diagnostic: composite items (blade mail, bkb, force staff...) are bought
+	-- directly nowhere else in the codebase, so log the engine's verdict.
+	local iqf = Customize.FightIQ
+	if iqf ~= nil and iqf.Debug == true then
+		print('[IQ] '..botName..' reactive buy '..itemName..' result='..tostring(nResult)
+			..' (success='..tostring(PURCHASE_ITEM_SUCCESS)..') gold='..bot:GetGold())
+	end
+	return nResult == PURCHASE_ITEM_SUCCESS
 end
 local function ReactiveItemPurchase()
 	local iq = Customize.ItemIQ
