@@ -1020,8 +1020,8 @@ function ItemPurchaseThink()
 		end
 	end
 
-	-- Smoke of Deceit
-	if J.GetPosition(bot) == 5 and botWorth < 10000
+	-- Smoke of Deceit (pos 4 or 5 — either support can carry the gank smoke)
+	if J.GetPosition(bot) >= 4 and botWorth < 10000
 	and Utils.CountBackpackEmptySpace(bot) >= 2
 	and GetItemStockCount('item_smoke_of_deceit') > 1
 	and botGold >= GetItemCost('item_smoke_of_deceit')
