@@ -28,9 +28,10 @@ deployment friction that likely caused the original "seems not working" report.
 ## Assumptions (user away; to be confirmed on return)
 
 1. Scope is the six improvement items discussed on 2026-08-19 (this spec).
-2. "Countering Sniper with Blade Mail" means **cores should buy Blade Mail
-   regardless of primary attribute**; the current STR-only gate is the
-   mismatch. Supports keep Ghost Scepter.
+2. ~~"Countering Sniper with Blade Mail" means cores should buy Blade Mail
+   regardless of primary attribute.~~ **Superseded 2026-08-20:** the user
+   questioned this; agreed rule is durability-based (see item 2 design) —
+   Blade Mail only where a human would buy it.
 3. No implementation starts until the user approves this spec and the plan,
    and the playtest evidence is in (it decides two design branches).
 4. The Windows gaming PC uses a standard Steam install; the deploy script must
@@ -70,17 +71,24 @@ behavior depends on guessing the answer.
 
 **Problem.** Blade Mail is bought only by strength-attribute non-supports;
 AGI/INT carries facing Sniper get Ghost Scepter — exactly the "no blademail"
-the user observed.
+the user observed. But blanket "all cores buy Blade Mail" is bad Dota: the
+item's value scales with surviving inside the damage, and a squishy carry
+reflects two hits and dies (revised 2026-08-20 with the user).
 
-**Design.** Replace the attribute test with a role test in the Anti_Physical
+**Design (durability-based, decided 2026-08-20).** In the Anti_Physical
 branch:
 
-- Core (`J.IsCore(bot)` / pos 1–3) → Blade Mail.
-- Support (pos 4–5) → Ghost Scepter.
+- Durable non-support — `GetPrimaryAttribute() == ATTRIBUTE_STRENGTH` OR
+  `GetMaxHealth() >= 1600` at trigger time → Blade Mail. Catches tanky
+  AGI/Universal bruisers, matching the 32 hero builds that already carry it.
+- Support → Ghost Scepter (unchanged).
+- Squishy non-support core → buys NOTHING here; falls through to the
+  existing Force Staff gap-close branch — the human answer to being
+  out-ranged. **Accepted change:** squishy cores stop buying Ghost Scepter
+  (ghost form disables their own attacks; it was a questionable buy).
 
-Rationale: Blade Mail's reflect scales with the attacker's damage and is the
-counter the user explicitly asked for; Ghost Scepter stays the support answer.
 `bSquishy` remains for the other branches (Cloak, Glimmer) unchanged.
+Future polish (out of scope): Hurricane Pike for ranged carries.
 
 ### 3. VM-independent team calls (`bots/FunLib/jmz_func.lua`) — **gated on Q2**
 
@@ -100,6 +108,9 @@ identically:
 - Time-bucketed stability: candidates are scored once per 3-second bucket
   (`math.floor(DotaTime() / 3)`); all bots agree within a bucket and switch
   targets simultaneously. This replaces `Team_Focus_Window` hysteresis.
+- No calls during the laning phase (the old hunt code had this guard; the
+  deterministic version keeps it for the whole computation — lane fights
+  are already served by the local focus-fire bonuses).
 - `J.GetTeamFocusTarget()` keeps its signature; `ConsiderTeamFocus` /
   `ConsiderHuntCall` become selectors feeding the same deterministic scorer,
   so all call sites (targeting bonus, smoke-gank) are untouched.
@@ -180,8 +191,9 @@ access; verified with `curl https://dota.sunarjodaniel.xyz/report`.
 
 ## Success criteria
 
-1. Playtest console shows a core buying Blade Mail against a long-range
-   physical attacker.
+1. Playtest console shows a durable core (STR or ≥1600 max HP) buying Blade
+   Mail against a long-range physical attacker, and squishy cores answering
+   with Force Staff instead of Ghost Scepter.
 2. Focus/hunt calls demonstrably shared: all bots' targeting converges on the
    called unit (one call line, multiple heroes attacking it).
 3. Smoke-gank fires in at least one organic setup per game where conditions

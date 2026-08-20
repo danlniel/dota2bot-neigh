@@ -283,14 +283,20 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Blade Mail on cores regardless of attribute
+### Task 3: Blade Mail on durable heroes; squishy cores gap-close instead
 
 **Files:**
 - Modify: `bots/item_purchase_generic.lua` (Anti_Physical branch inside `ReactiveItemPurchase`, near line 41)
 
 **Interfaces:**
-- Consumes: `J.IsCore(bot)` (`bots/FunLib/jmz_func.lua:4901`), `Role.IsSupport(bot)`, `_tryReactiveBuy(itemName)` from Task 2.
+- Consumes: `Role.IsSupport(bot)`, `_tryReactiveBuy(itemName)` from Task 2, Valve globals `ATTRIBUTE_STRENGTH`, `bot:GetPrimaryAttribute()`, `bot:GetMaxHealth()`.
 - Produces: nothing new — behavior change only.
+
+Rule (spec item 2, revised 2026-08-20): Blade Mail only where it's strong —
+heroes tanky enough to stand in the damage (STR primary or ≥1600 max HP).
+Squishy cores buy nothing here and fall through to the existing Force Staff
+gap-close branch (5) further down `ReactiveItemPurchase`; supports keep
+Ghost Scepter.
 
 - [ ] **Step 1: Replace the branch**
 
@@ -317,18 +323,22 @@ New code:
 		local bKited, kiter = J.IsBeingKitedByLongerRange(bot)
 		local bHardHit = bot:WasRecentlyDamagedByAnyHero(2.0) and J.GetHP(bot) < 0.6
 		if bKited or bHardHit then
-			-- cores answer sustained physical with Blade Mail (reflect scales
-			-- with the attacker's damage); supports stay on Ghost Scepter
-			if J.IsCore(bot) and not Role.IsSupport(bot) then
+			-- Blade Mail only where it's strong: heroes tanky enough to stand
+			-- in the damage while it reflects. Squishy cores skip Ghost (it
+			-- disables their own attacks) and fall through to the Force Staff
+			-- gap-close branch below — the human answer to being out-ranged.
+			local bDurable = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
+				or bot:GetMaxHealth() >= 1600
+			if bDurable and not Role.IsSupport(bot) then
 				if _tryReactiveBuy('item_blade_mail') then return end
-			else
+			elseif Role.IsSupport(bot) then
 				if _tryReactiveBuy('item_ghost') then return end
 			end
 		end
 	end
 ```
 
-Note: `bSquishy` stays defined above — the Anti_Magic and Team_Defense branches still use it.
+Note: `bSquishy` stays defined above — the Anti_Magic and Team_Defense branches still use it. The 1600-HP threshold is deliberate: a bruiser hits it around the 12–18 min Blade Mail timing window; a squishy carry doesn't.
 
 - [ ] **Step 2: Syntax-check**
 
@@ -339,12 +349,12 @@ Expected: `SYNTAX-OK`
 
 ```bash
 git add bots/item_purchase_generic.lua
-git commit -m "ItemIQ: cores buy Blade Mail vs physical kiting regardless of attribute
+git commit -m "ItemIQ: Blade Mail on durable heroes, gap-close for squishy cores
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-In-game acceptance (next playtest): an AGI carry harassed by Sniper logs `[IQ] ... reactive buy item_blade_mail ...`.
+In-game acceptance (next playtest): a bruiser harassed by Sniper logs `[IQ] ... reactive buy item_blade_mail ...`; a squishy carry in the same spot logs `item_force_staff`, never `item_ghost`.
 
 ---
 
@@ -643,6 +653,10 @@ Dota 2 install — Steam is auto-detected, or pass
 `-DotaPath "D:\...\dota 2 beta"` explicitly. After it runs, the in-game
 console should print `[IQ] FightIQ lib loaded (build ...)` — that line is the
 proof the game loaded the fresh scripts.
+
+The mirror is exact: edits made directly in the game's `vscripts\bots`
+folder are overwritten. Change files in the repo (e.g.
+`bots/Customize/general.lua`) and redeploy instead.
 ```
 
 - [ ] **Step 4: Sanity-check the PowerShell parses (best effort on macOS)**
@@ -724,6 +738,7 @@ local function makeEnv(allies, enemies)
 		enemiesNear = function(loc, r) return near(enemies, loc, r) end,
 		isValidTarget = function() return true end,
 		nearEnemyTower = function() return false end,
+		isLaningPhase = function() return false end,
 		distToLoc = function(u, loc)
 			local ul = u.GetLocation()
 			local dx, dy = ul.x - loc.x, ul.y - loc.y
@@ -760,6 +775,11 @@ assert(TF.Compute(makeEnv({ a1, a2 }, { far }), {}) == far)
 -- no candidates at all -> nil
 assert(TF.Compute(makeEnv({ a1, a2 }, {}), {}) == nil)
 
+-- laning phase -> never any call (guard kept from the old hunt code)
+local laneEnv = makeEnv({ a1, a2 }, { e1, e2 })
+laneEnv.isLaningPhase = function() return true end
+assert(TF.Compute(laneEnv, {}) == nil)
+
 -- buckets: 3-second windows
 assert(TF.Bucket(0) == 0 and TF.Bucket(2.9) == 0 and TF.Bucket(3.0) == 1 and TF.Bucket(7.5) == 2)
 
@@ -791,8 +811,12 @@ end
 
 -- env (all functions injected; see TeamFocusEnv in jmz_func.lua):
 --   vector(x, y), allies(), alliesNear(loc, r), enemiesNear(loc, r),
---   isValidTarget(u), nearEnemyTower(loc, r), distToLoc(u, loc)
+--   isValidTarget(u), nearEnemyTower(loc, r), distToLoc(u, loc),
+--   isLaningPhase()
 function M.Compute(env, iq)
+	-- no calls during laning: lane fights are served by the local
+	-- focus-fire bonuses, and early "hunt" calls waste smokes
+	if env.isLaningPhase() then return nil end
 	local tAllies = env.allies()
 	if #tAllies < 2 then return nil end
 	local x, y = 0, 0
@@ -919,6 +943,7 @@ local function TeamFocusEnv()
 		isValidTarget = function(w) return not J.CannotBeKilled(nil, w.handle) end,
 		nearEnemyTower = function(loc, r) return IsNearEnemyTower(loc, r) end,
 		distToLoc = function(w, loc) return GetUnitToLocationDistance(w.handle, loc) end,
+		isLaningPhase = function() return J.IsInLaningPhase() end,
 	}
 end
 
