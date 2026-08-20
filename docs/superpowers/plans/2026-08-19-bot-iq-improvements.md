@@ -16,7 +16,7 @@
 - Never hardcode item component arrays; decomposition must flow through Valve's `GetItemComponents` (here via `Item.GetComponentList`). (Project rule from CLAUDE.md.)
 - All new diagnostic prints use the `[IQ] ` prefix and are gated on `Customize.FightIQ.Debug == true`.
 - Every commit message ends with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
-- Task 7 runs ONLY if Task 1 records "Q2: isolated VMs". Tasks 2–6 are unconditional.
+- Task 7 runs ONLY if Task 1 records "Q2: isolated VMs". Tasks 2–6 and 8–10 are unconditional (8–10 may run before 7).
 - The repo working branch is `neigh/init-code`; push after each commit is fine (private fork).
 
 ---
@@ -1001,10 +1001,247 @@ In-game acceptance (next playtest): `[IQ] focus target ->` lines appear, and mul
 
 ---
 
+### Task 8: Proactive gap-close vs a drafted long-range menace
+
+(Unconditional — may run before Task 7. Depends on Task 2's `_tryReactiveBuy` fallback for Hurricane Pike components.)
+
+**Files:**
+- Modify: `bots/Customize/general.lua` (ItemIQ table, near line 249)
+- Modify: `bots/item_purchase_generic.lua` (`ReactiveItemPurchase`, insert after the throttle lines and before branch 1)
+
+**Interfaces:**
+- Consumes: `_tryReactiveBuy(itemName)` (Task 2 version), `J.IsCore(bot)`, `J.GetEnemyList(bot, r)`, `J.HasItem(bot, name)`, Valve globals `GetTeamPlayers`, `GetOpposingTeam`, `GetSelectedHeroName`, `DotaTime`.
+- Produces: config key `Customize.ItemIQ.Proactive_Gap_Close` (default true); module-local `reactiveLongRangeMenace` cache.
+
+- [ ] **Step 1: Add the config key**
+
+In `bots/Customize/general.lua`, inside `Customize.ItemIQ` after the `Gap_Close` entry:
+
+```lua
+    -- proactive: if the enemy DRAFTED a long-range menace (Sniper/Drow/
+    -- Clinkz, or any seen enemy with 620+ attack range), cores pre-arm a
+    -- gap-close by minute 10 instead of waiting to be kited: ranged cores
+    -- buy Hurricane Pike, melee cores buy Force Staff.
+    Proactive_Gap_Close = true,
+```
+
+- [ ] **Step 2: Add branch 0 to ReactiveItemPurchase**
+
+In `bots/item_purchase_generic.lua`, add a module-local above `ReactiveItemPurchase` (next to `local reactiveNextCheck = 0`):
+
+```lua
+local reactiveLongRangeMenace = nil -- nil = not checked yet
+```
+
+Then inside `ReactiveItemPurchase`, directly after the line `local bSquishy = ...` and before the branch-1 comment, insert:
+
+```lua
+	-- 0) Proactive vs long-range menace (e.g. Sniper): known from the draft
+	--    or from any seen enemy with 620+ attack range (covers range talents).
+	--    Cores pre-arm a gap-close instead of waiting to be kited.
+	if iq.Proactive_Gap_Close ~= false and DotaTime() > 10 * 60 and J.IsCore(bot) then
+		if reactiveLongRangeMenace == nil then
+			reactiveLongRangeMenace = false
+			local tMenaceNames = {
+				npc_dota_hero_sniper = true,
+				npc_dota_hero_drow_ranger = true,
+				npc_dota_hero_clinkz = true,
+			}
+			for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+				local sName = GetSelectedHeroName(id)
+				if sName ~= nil and tMenaceNames[sName] then
+					reactiveLongRangeMenace = true
+					break
+				end
+			end
+		end
+		if reactiveLongRangeMenace == false then
+			for _, e in pairs(J.GetEnemyList(bot, 99999)) do
+				if J.IsValidHero(e) and e:GetAttackRange() >= 620 then
+					reactiveLongRangeMenace = true
+					break
+				end
+			end
+		end
+		if reactiveLongRangeMenace == true
+		and not J.HasItem(bot, 'item_blink')
+		and not J.HasItem(bot, 'item_force_staff')
+		and not J.HasItem(bot, 'item_hurricane_pike')
+		then
+			local sGap = bot:GetAttackRange() >= 350 and 'item_hurricane_pike' or 'item_force_staff'
+			if _tryReactiveBuy(sGap) then return end
+		end
+	end
+```
+
+(The draft scan runs once; the seen-enemy scan repeats on the 4s tick only until a menace is found. `reactiveLongRangeMenace` stays `false` harmlessly in menace-free games.)
+
+- [ ] **Step 3: Syntax-check**
+
+Run: `luajit -bl bots/item_purchase_generic.lua > /dev/null && luajit -bl bots/Customize/general.lua > /dev/null && echo SYNTAX-OK`
+Expected: `SYNTAX-OK`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add bots/item_purchase_generic.lua bots/Customize/general.lua
+git commit -m "ItemIQ: proactive Pike/Force Staff when the enemy drafts a long-range menace
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+In-game acceptance: vs a Sniper lobby, `[IQ] ... reactive buy item_hurricane_pike/item_force_staff` lines on cores around 10–20 min.
+
+---
+
+### Task 9: Hold lockdown for the long-range backliner
+
+(Unconditional — works with both the stored-call and the Task 7 deterministic `J.GetTeamFocusTarget`.)
+
+**Files:**
+- Modify: `bots/FunLib/jmz_func.lua` (add helper near `J.GetTeamFocusTarget`)
+- Modify: `bots/ability_item_usage_generic.lua` (sheepstick consider near line 4306, orchid consider near line 3773)
+
+**Interfaces:**
+- Consumes: `J.GetTeamFocusTarget()`, `J.IsValidHero`, `J.IsDisabled`, `GetFightIQ()` (jmz-local), `GetUnitToUnitDistance`; in the consider functions: their existing locals `nCastRange`, `sCastType`, plus `J.CanCastOnNonMagicImmune` and `X.IsWithoutSpellShield`.
+- Produces: `J.GetLongRangeLockTarget(bot, nCastRange) -> unit|nil`.
+
+- [ ] **Step 1: Add the helper to jmz_func.lua**
+
+Directly after the `J.GetTeamFocusTarget` function ends:
+
+```lua
+-- Priority lockdown target: the called focus target when it's a long-range
+-- attacker in cast range — hold sheep/orchid for the backliner instead of
+-- burning them on the nearest frontliner.
+function J.GetLongRangeLockTarget(bot, nCastRange)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Avoid_Long_Range == false then return nil end
+	local target = J.GetTeamFocusTarget()
+	if target ~= nil
+	and J.IsValidHero(target)
+	and target:GetAttackRange() >= 550
+	and not J.IsDisabled(target)
+	and GetUnitToUnitDistance(bot, target) <= nCastRange
+	then
+		return target
+	end
+	return nil
+end
+```
+
+- [ ] **Step 2: Insert the priority check into sheepstick**
+
+In `bots/ability_item_usage_generic.lua`, in `X.ConsiderItemDesire["item_sheepstick"]`, directly after the `local nInRangeEnmyList = ...` line and before the `for` loop:
+
+```lua
+	-- FightIQ: hold the sheep for a called long-range backliner in range
+	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
+	if hLockTarget ~= nil
+	and J.CanCastOnNonMagicImmune(hLockTarget)
+	and X.IsWithoutSpellShield(hLockTarget)
+	then
+		return BOT_ACTION_DESIRE_HIGH, hLockTarget, sCastType, 'FightIQ: lock backliner'
+	end
+```
+
+- [ ] **Step 3: Insert the same check into orchid**
+
+In `X.ConsiderItemDesire["item_orchid"]` (same file, near line 3773 — identical shape: `nCastRange = 900 + aetherRange`), insert the SAME block directly after its `local nInRangeEnmyList = ...` line:
+
+```lua
+	-- FightIQ: hold the orchid for a called long-range backliner in range
+	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
+	if hLockTarget ~= nil
+	and J.CanCastOnNonMagicImmune(hLockTarget)
+	and X.IsWithoutSpellShield(hLockTarget)
+	then
+		return BOT_ACTION_DESIRE_HIGH, hLockTarget, sCastType, 'FightIQ: lock backliner'
+	end
+```
+
+(Bloodthorn reuses the orchid function via delegation at line ~1747, so it inherits the behavior for free. Leave Abyssal alone — it's a melee-range item where "nearest" is already correct.)
+
+- [ ] **Step 4: Syntax-check**
+
+Run: `luajit -bl bots/FunLib/jmz_func.lua > /dev/null && luajit -bl bots/ability_item_usage_generic.lua > /dev/null && echo SYNTAX-OK`
+Expected: `SYNTAX-OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add bots/FunLib/jmz_func.lua bots/ability_item_usage_generic.lua
+git commit -m "FightIQ: sheep/orchid prioritize the called long-range backliner
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Stop standing and dying while kited
+
+(Unconditional. Root cause, confirmed 2026-08-20: laning desire 0.9 outbids the A4 kite-retreat ceiling of HIGH×HP-scale, so an out-ranged bot keeps last-hitting until nearly dead.)
+
+**Files:**
+- Modify: `bots/mode_laning_generic.lua` (GetDesire, before the last-hit `return 0.9` branch near line 98)
+- Modify: `bots/mode_retreat_generic.lua` (A4 block, line ~205)
+
+**Interfaces:**
+- Consumes: `J.GetHP(bot)`, `J.IsBeingKitedByLongerRange(bot)` (both already required in these files).
+- Produces: nothing new — behavior change only.
+
+- [ ] **Step 1: Laning yields when weakened and out-ranged**
+
+In `bots/mode_laning_generic.lua` GetDesire, insert directly BEFORE the block starting `if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then` (near line 98):
+
+```lua
+	-- A4: weakened and being kited by a longer-range attacker — stop
+	-- contesting last hits; yield the mode auction to retreat/attack.
+	if J.GetHP(bot) < 0.55 and J.IsBeingKitedByLongerRange(bot) then
+		return BOT_MODE_DESIRE_NONE
+	end
+```
+
+- [ ] **Step 2: Retreat wins the auction once HP drops**
+
+In `bots/mode_retreat_generic.lua`, change the A4 desire line:
+
+```lua
+        if bKited and not (bWeAreStronger and #nAllyHeroes >= #nEnemyHeroes) then
+            return RemapValClamped(botHP, 0.9, 0.3, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_HIGH)
+        end
+```
+
+to:
+
+```lua
+        if bKited and not (bWeAreStronger and #nAllyHeroes >= #nEnemyHeroes) then
+            return RemapValClamped(botHP, 0.9, 0.35, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
+        end
+```
+
+- [ ] **Step 3: Syntax-check**
+
+Run: `luajit -bl bots/mode_laning_generic.lua > /dev/null && luajit -bl bots/mode_retreat_generic.lua > /dev/null && echo SYNTAX-OK`
+Expected: `SYNTAX-OK`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add bots/mode_laning_generic.lua bots/mode_retreat_generic.lua
+git commit -m "A4: kited bots disengage instead of tanking to death in lane
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+In-game acceptance: a bot under Sniper fire drops below ~55% HP and visibly backs off (paired `[IQ] ... kited by npc_dota_hero_sniper` lines), instead of standing at the creep wave until dead.
+
+---
+
 ## Final verification (after all tasks)
 
 - [ ] Run every unit test: `luajit tests/test_reactive_fallback.lua && python3 tests/test_server_report.py && luajit tests/test_team_focus.lua` (last one only if Task 7 ran) — all pass.
 - [ ] `luajit -bl` on every touched `.lua` file — clean.
 - [ ] `git push origin neigh/init-code`.
-- [ ] User deploys via `deploy/deploy-to-dota.bat` and plays one game; console shows the new `[IQ]` lines listed in each task's acceptance note.
+- [ ] User deploys via `deploy/deploy-to-dota.bat` and plays one game (ideally with a human Sniper); console shows the new `[IQ]` lines listed in each task's acceptance note, cores show Pike/Force Staff by mid-game, and no bot dies standing still while kited.
 - [ ] `curl https://dota.sunarjodaniel.xyz/report` returns the fresh balance report after that game completes.

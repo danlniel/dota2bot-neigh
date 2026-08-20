@@ -162,6 +162,53 @@ No auth (aggregate game stats only, same exposure class as `/health`).
 Deployed by rebuilding the `dota2bot-ml` container over the existing SSH
 access; verified with `curl https://dota.sunarjodaniel.xyz/report`.
 
+### 7. Proactive gap-close vs a long-range menace (`bots/item_purchase_generic.lua`) — added 2026-08-20
+
+**Problem.** Itemization is purely reactive: a bot only answers Sniper after
+it is already being kited. Humans pre-arm from the draft.
+
+**Design.** New branch 0 in `ReactiveItemPurchase` behind
+`ItemIQ.Proactive_Gap_Close` (default on): after minute 10, cores check once
+whether the enemy drafted a long-range menace (seed list: Sniper, Drow,
+Clinkz — via `GetSelectedHeroName` on enemy player IDs) or any seen enemy
+shows ≥620 attack range (covers range talents/items). If so and the bot owns
+no Blink/Force Staff/Hurricane Pike: ranged cores buy Hurricane Pike, melee
+cores buy Force Staff (both through the Task 2 fallback, gold-gated at full
+cost so core timings stay intact).
+
+### 8. Hold lockdown for the long-range backliner (`ability_item_usage_generic.lua`) — added 2026-08-20
+
+**Problem.** Bots burn Sheepstick/Orchid on the nearest frontliner; the
+counterplay to a fed Sniper is locking HIM down.
+
+**Design.** New helper `J.GetLongRangeLockTarget(bot, nCastRange)`: returns
+the current team-focus target when it is a valid, not-yet-disabled enemy with
+≥550 attack range inside cast range. Sheepstick and Orchid consider-functions
+check it FIRST (before their proximity loop) and cast on it at HIGH desire.
+Guarded by `FightIQ.Avoid_Long_Range`.
+
+### 9. Stop standing and dying while kited — added 2026-08-20
+
+**Problem (root-caused from the user's report "bot does nothing until
+dead").** Two confirmed mechanisms: (a) target-candidate lists are built from
+~800-unit scans, so a 950-range Sniper is never a candidate — the bot has no
+attackable concept of its killer; (b) the A4 kite-retreat desire tops out at
+HIGH (0.75) scaled by HP while laning mode returns 0.9 whenever a last-hit
+exists, so retreat loses the mode auction until the bot is nearly dead.
+
+**Design (two one-line-scale edits, both evidence-matched):**
+- `mode_laning_generic.lua` GetDesire: when
+  `J.GetHP(bot) < 0.55 and J.IsBeingKitedByLongerRange(bot)`, return
+  `BOT_MODE_DESIRE_NONE` — a weakened, out-ranged bot stops contesting last
+  hits and yields the auction.
+- `mode_retreat_generic.lua` A4 block: desire ramp becomes
+  `RemapValClamped(botHP, 0.9, 0.35, BOT_MODE_DESIRE_MODERATE,
+  BOT_MODE_DESIRE_VERYHIGH)` so disengage actually wins once HP drops.
+
+Deliberately NOT included yet: forcing bots to attack the kiter (fight-back).
+With items 7/8, the focus scorer, and these two edits, the observed failure
+is addressed; adding aggression without playtest evidence risks feeding.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is
@@ -200,6 +247,9 @@ access; verified with `curl https://dota.sunarjodaniel.xyz/report`.
    are met.
 4. Deploy = double-click; `[IQ]` build line confirms freshness in-game.
 5. `https://dota.sunarjodaniel.xyz/report` serves the latest balance report.
+6. Vs a human Sniper: cores show up with Pike/Force Staff by mid-game, a
+   sheep/orchid lands on Sniper in fights, and no bot dies in lane standing
+   still while being kited (it disengages below ~55% HP instead).
 
 ## Sequencing gate
 
