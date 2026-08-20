@@ -37,6 +37,7 @@ require 'bots.FretBots.RoleDetermination'
 -- Neutral items
 require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
+require 'bots.FretBots.HeroHandicap'
 
 -- =====================================================================
 -- ML Director (adaptive difficulty via model server, see ml/README.md)
@@ -221,6 +222,7 @@ function FretBots:PlayersLoadedTimer()
 		-- Register EntityHurt Listener
 		EntityHurt:RegisterEvents()
 		Modifier:Initialize()
+		HeroHandicap:Initialize()
 		-- Hero Specific extensions - these will stop themselves if they
 		-- determine that they are not enabled
 		-- Disabled until this works
