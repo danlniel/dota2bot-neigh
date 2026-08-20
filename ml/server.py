@@ -242,8 +242,27 @@ class Handler(BaseHTTPRequestHandler):
                 "model": "trained" if self.policy.model else "heuristic",
                 "uptime_s": int(time.time() - START_TIME),
             })
+        elif self.path == "/report":
+            self._respond_file(os.path.join(DATA_DIR, "report-latest.txt"))
+        elif self.path == "/report/history":
+            self._respond_file(os.path.join(DATA_DIR, "report-history.log"))
         else:
             self._respond({"error": "unknown endpoint"}, 404)
+
+    def _respond_file(self, path: str):
+        """Serve a data file as text/plain; friendly 404 when absent."""
+        try:
+            with open(path, "rb") as f:
+                body = f.read()
+            code = 200
+        except OSError:
+            body = b"no report generated yet\n"
+            code = 404
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _respond(self, obj: dict, code: int = 200):
         body = json.dumps(obj).encode()
