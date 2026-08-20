@@ -202,7 +202,7 @@ function GetDesireHelper()
     do
         local bKited = J.IsBeingKitedByLongerRange(bot)
         if bKited and not (bWeAreStronger and #nAllyHeroes >= #nEnemyHeroes) then
-            return RemapValClamped(botHP, 0.9, 0.3, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_HIGH)
+            return RemapValClamped(botHP, 0.9, 0.35, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
         end
     end
 

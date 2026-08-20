@@ -95,6 +95,12 @@ function GetDesire()
 	-- 	return 0.2
 	-- end
 
+	-- A4: weakened and being kited by a longer-range attacker — stop
+	-- contesting last hits; yield the mode auction to retreat/attack.
+	if J.GetHP(bot) < 0.55 and J.IsBeingKitedByLongerRange(bot) then
+		return BOT_MODE_DESIRE_NONE
+	end
+
 	if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
 		-- last hit
 		if J.IsInLaningPhase() then
