@@ -8,6 +8,7 @@ local Role = require( GetScriptDirectory()..'/FunLib/aba_role' )
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
 local Utils = require( GetScriptDirectory()..'/FunLib/utils')
 local Customize = require( GetScriptDirectory()..'/FunLib/custom_loader')
+local ReactiveBuy = require( GetScriptDirectory()..'/FunLib/reactive_buy' )
 
 -- Reactive itemization (roadmap A3): buy a situational defensive item when the
 -- enemy threat calls for it, following the codebase's proven direct-purchase
@@ -25,15 +26,41 @@ local function _tryReactiveBuy(itemName)
 	if _reactiveOwnedOrBuilding(itemName) then return false end
 	if Item.GetEmptyInventoryAmount(bot) < 1 then return false end
 	if bot:GetGold() < GetItemCost(itemName) then return false end
-	local nResult = bot:ActionImmediate_PurchaseItem(itemName)
-	-- Diagnostic: composite items (blade mail, bkb, force staff...) are bought
-	-- directly nowhere else in the codebase, so log the engine's verdict.
 	local iqf = Customize.FightIQ
-	if iqf ~= nil and iqf.Debug == true then
+	local bDebug = iqf ~= nil and iqf.Debug == true
+	local nResult = bot:ActionImmediate_PurchaseItem(itemName)
+	if bDebug then
 		print('[IQ] '..botName..' reactive buy '..itemName..' result='..tostring(nResult)
 			..' (success='..tostring(PURCHASE_ITEM_SUCCESS)..') gold='..bot:GetGold())
 	end
-	return nResult == PURCHASE_ITEM_SUCCESS
+	if nResult == PURCHASE_ITEM_SUCCESS then return true end
+
+	-- Engine refused the composite: buy its parts instead. Gold was gated at
+	-- the full item cost above, so this can't half-build out of poverty; a
+	-- mid-pass failure leaves owned parts that MissingComponents skips on the
+	-- next 4s tick.
+	local tComponents = ReactiveBuy.FlattenComponents(itemName, Item.GetComponentList)
+	if #tComponents <= 1 then return false end
+	if not ReactiveBuy.CanBuyComponentsNow(tComponents, IsItemPurchasedFromSecretShop,
+		bot:DistanceFromSecretShop() == 0) then return false end
+	local tOwned = {}
+	for slot = 0, 14 do
+		local it = bot:GetItemInSlot(slot)
+		if it ~= nil then
+			local n = it:GetName()
+			tOwned[n] = (tOwned[n] or 0) + 1
+		end
+	end
+	local tMissing = ReactiveBuy.MissingComponents(tComponents, tOwned)
+	if bDebug then
+		print('[IQ] '..botName..' fallback: buying '..#tMissing..' components of '..itemName)
+	end
+	for _, comp in ipairs(tMissing) do
+		if bot:ActionImmediate_PurchaseItem(comp) ~= PURCHASE_ITEM_SUCCESS then
+			return false
+		end
+	end
+	return true
 end
 local function ReactiveItemPurchase()
 	local iq = Customize.ItemIQ
