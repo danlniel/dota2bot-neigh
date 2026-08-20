@@ -32,8 +32,14 @@ if ($target -notmatch 'scripts\\vscripts\\bots$') {
 
 Write-Host "repo:   $RepoRoot"
 Write-Host "target: $target"
-git -C $RepoRoot pull --ff-only
-$commit = git -C $RepoRoot rev-parse --short HEAD
+if (Test-Path (Join-Path $RepoRoot ".git")) {
+    git -C $RepoRoot pull --ff-only
+    if ($LASTEXITCODE -ne 0) { Write-Warning "git pull failed; deploying the files already on disk" }
+    $commit = git -C $RepoRoot rev-parse --short HEAD
+} else {
+    Write-Warning "this folder is not a git clone (ZIP download?) - skipping pull, deploying the files already on disk. Clone with git to get one-click updates."
+    $commit = "unknown (not a git clone)"
+}
 robocopy (Join-Path $RepoRoot "bots") $target /MIR /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
 Write-Host "deployed commit $commit"
