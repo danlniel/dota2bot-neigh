@@ -3536,6 +3536,24 @@ function J.GetTeamFocusTarget()
 	return teamFocusTarget
 end
 
+-- Priority lockdown target: the called focus target when it's a long-range
+-- attacker in cast range — hold sheep/orchid for the backliner instead of
+-- burning them on the nearest frontliner.
+function J.GetLongRangeLockTarget(bot, nCastRange)
+	local iq = GetFightIQ()
+	if iq == nil or iq.Avoid_Long_Range == false then return nil end
+	local target = J.GetTeamFocusTarget()
+	if target ~= nil
+	and J.IsValidHero(target)
+	and target:GetAttackRange() >= 550
+	and not J.IsDisabled(target)
+	and GetUnitToUnitDistance(bot, target) <= nCastRange
+	then
+		return target
+	end
+	return nil
+end
+
 local TOWER_ID_LIST = {
 	TOWER_TOP_1, TOWER_TOP_2, TOWER_TOP_3,
 	TOWER_MID_1, TOWER_MID_2, TOWER_MID_3,

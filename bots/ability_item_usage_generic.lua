@@ -3778,6 +3778,14 @@ X.ConsiderItemDesire["item_orchid"] = function( hItem )
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
+	-- FightIQ: hold the orchid for a called long-range backliner in range
+	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
+	if hLockTarget ~= nil
+	and J.CanCastOnNonMagicImmune(hLockTarget)
+	and X.IsWithoutSpellShield(hLockTarget)
+	then
+		return BOT_ACTION_DESIRE_HIGH, hLockTarget, sCastType, 'FightIQ: lock backliner'
+	end
 
 	for _, npcEnemy in pairs( nInRangeEnmyList )
 	do
@@ -4311,6 +4319,14 @@ X.ConsiderItemDesire["item_sheepstick"] = function( hItem )
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
+	-- FightIQ: hold the sheep for a called long-range backliner in range
+	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
+	if hLockTarget ~= nil
+	and J.CanCastOnNonMagicImmune(hLockTarget)
+	and X.IsWithoutSpellShield(hLockTarget)
+	then
+		return BOT_ACTION_DESIRE_HIGH, hLockTarget, sCastType, 'FightIQ: lock backliner'
+	end
 
 	for _, npcEnemy in pairs( nInRangeEnmyList )
 	do
