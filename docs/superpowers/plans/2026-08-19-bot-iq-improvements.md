@@ -1238,6 +1238,147 @@ In-game acceptance: a bot under Sniper fire drops below ~55% HP and visibly back
 
 ---
 
+### Task 11: Sniper handicap (house-rule hero nerf, FretBots addon VM)
+
+(Unconditional. User-requested 2026-08-20; magnitudes delegated: −12% base damage outgoing, −100 attack range, symmetric for human and bot Snipers, tunable in one table.)
+
+**Files:**
+- Create: `bots/FretBots/modifiers/modifier_neigh_handicap.lua`
+- Create: `bots/FretBots/HeroHandicap.lua`
+- Modify: `bots/FretBots.lua` (add require near line 39; add `HeroHandicap:Initialize()` next to `Modifier:Initialize()` near line 223)
+
+**Interfaces:**
+- Consumes: FretBots globals `Utilities` (`Utilities:Print`), `Timers` pattern not needed (uses `ListenToGameEvent("npc_spawned", ...)` like `Modifier:Initialize`), engine globals `LinkLuaModifier`, `EntIndexToHScript`, `Dynamic_Wrap`.
+- Produces: global `HeroHandicap` with `settings` table, `Apply(unit)`, `Initialize()`; Lua modifier `modifier_neigh_handicap` reading `damagePct`/`attackRange` from its AddNewModifier kv params.
+
+- [ ] **Step 1: Write the modifier**
+
+Create `bots/FretBots/modifiers/modifier_neigh_handicap.lua`:
+
+```lua
+-- House-rule hero handicap (spec 2026-08-19 item 10). Numbers come from
+-- HeroHandicap.settings via AddNewModifier kv params. Visible on purpose:
+-- an honest debuff, unpurgable, survives death.
+if modifier_neigh_handicap == nil then modifier_neigh_handicap = class({}) end
+
+function modifier_neigh_handicap:IsHidden() return false end
+function modifier_neigh_handicap:IsDebuff() return true end
+function modifier_neigh_handicap:IsPurgable() return false end
+function modifier_neigh_handicap:IsPurgeException() return false end
+function modifier_neigh_handicap:IsPermanent() return true end
+function modifier_neigh_handicap:RemoveOnDeath() return false end
+
+function modifier_neigh_handicap:GetAttributes()
+    return MODIFIER_ATTRIBUTE_PERMANENT + MODIFIER_ATTRIBUTE_IGNORE_INVULNERABLE
+end
+
+function modifier_neigh_handicap:OnCreated(kv)
+    if not IsServer() then return end
+    self.damagePct = kv.damagePct or 0
+    self.attackRange = kv.attackRange or 0
+end
+
+function modifier_neigh_handicap:DeclareFunctions()
+    return {
+        MODIFIER_PROPERTY_BASEDAMAGEOUTGOING_PERCENTAGE,
+        MODIFIER_PROPERTY_ATTACK_RANGE_BONUS,
+    }
+end
+
+function modifier_neigh_handicap:GetModifierBaseDamageOutgoing_Percentage()
+    return self.damagePct or 0
+end
+
+function modifier_neigh_handicap:GetModifierAttackRangeBonus()
+    return self.attackRange or 0
+end
+```
+
+- [ ] **Step 2: Write the handicap manager**
+
+Create `bots/FretBots/HeroHandicap.lua`:
+
+```lua
+-- House-rule per-hero handicap (spec 2026-08-19 item 10). Applies a
+-- permanent debuff to every hero named below — human or bot alike, so the
+-- rule is symmetric. Tune or empty the table to change/remove the nerf.
+require 'bots.FretBots.Utilities'
+require 'bots.FretBots.modifiers.modifier_neigh_handicap'
+
+if HeroHandicap == nil then
+	HeroHandicap = {}
+end
+
+HeroHandicap.settings = {
+	-- -12% base attack damage, -100 attack range (max Take Aim 950 -> 850)
+	npc_dota_hero_sniper = { damagePct = -12, attackRange = -100 },
+}
+
+local announced = {}
+
+function HeroHandicap:Apply(unit)
+	if unit == nil or not unit.IsRealHero or not unit:IsRealHero() then return end
+	local cfg = HeroHandicap.settings[unit:GetUnitName()]
+	if cfg == nil then return end
+	if unit:HasModifier('modifier_neigh_handicap') then return end
+	unit:AddNewModifier(unit, nil, 'modifier_neigh_handicap',
+		{ damagePct = cfg.damagePct, attackRange = cfg.attackRange })
+	if not announced[unit:GetUnitName()] then
+		announced[unit:GetUnitName()] = true
+		Utilities:Print('House rule: '..unit:GetUnitName()..' handicapped ('
+			..(cfg.damagePct or 0)..'% dmg, '..(cfg.attackRange or 0)..' range)')
+	end
+end
+
+function HeroHandicap:Initialize()
+	-- LinkLuaModifier path is relative to vscripts/; try both known layouts
+	-- (repo copy under bots/, workshop copy at root) — pcall keeps a miss
+	-- harmless.
+	pcall(LinkLuaModifier, 'modifier_neigh_handicap',
+		'bots/FretBots/modifiers/modifier_neigh_handicap', LUA_MODIFIER_MOTION_NONE)
+	pcall(LinkLuaModifier, 'modifier_neigh_handicap',
+		'FretBots/modifiers/modifier_neigh_handicap', LUA_MODIFIER_MOTION_NONE)
+	ListenToGameEvent('npc_spawned', Dynamic_Wrap(HeroHandicap, 'OnNPCSpawned'), HeroHandicap)
+end
+
+function HeroHandicap:OnNPCSpawned(event)
+	local spawnedUnit = EntIndexToHScript(event.entindex)
+	HeroHandicap:Apply(spawnedUnit)
+end
+```
+
+- [ ] **Step 3: Wire into FretBots.lua**
+
+Add the require after `require 'bots.FretBots.modifiers.Modifier'` (near line 39):
+
+```lua
+require 'bots.FretBots.HeroHandicap'
+```
+
+Add the initialize call directly after `Modifier:Initialize()` (near line 223):
+
+```lua
+		HeroHandicap:Initialize()
+```
+
+- [ ] **Step 4: Syntax-check**
+
+Run: `luajit -bl bots/FretBots/modifiers/modifier_neigh_handicap.lua > /dev/null && luajit -bl bots/FretBots/HeroHandicap.lua > /dev/null && luajit -bl bots/FretBots.lua > /dev/null && echo SYNTAX-OK`
+Expected: `SYNTAX-OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add bots/FretBots/modifiers/modifier_neigh_handicap.lua bots/FretBots/HeroHandicap.lua bots/FretBots.lua
+git commit -m "FretBots: house-rule Sniper handicap (-12% dmg, -100 range, symmetric)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+In-game acceptance: chat announce on first Sniper spawn; visible debuff icon on the hero; Take Aim range tops at 850. Tune numbers in `HeroHandicap.settings`; empty the table to disable.
+
+---
+
 ## Final verification (after all tasks)
 
 - [ ] Run every unit test: `luajit tests/test_reactive_fallback.lua && python3 tests/test_server_report.py && luajit tests/test_team_focus.lua` (last one only if Task 7 ran) — all pass.

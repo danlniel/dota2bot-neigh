@@ -209,6 +209,30 @@ Deliberately NOT included yet: forcing bots to attack the kiter (fight-back).
 With items 7/8, the focus scorer, and these two edits, the observed failure
 is addressed; adding aggression without playtest evidence risks feeding.
 
+### 10. Sniper handicap — house-rule hero nerf (`bots/FretBots/`) — added 2026-08-20
+
+**Problem.** Even with behavioral counters, the user finds Sniper oppressive
+in their lobby and explicitly requested a hero nerf (magnitudes delegated).
+
+**Design.** A FretBots addon-VM feature (the only layer that can modify hero
+stats). New `bots/FretBots/HeroHandicap.lua` with a config table:
+
+```lua
+HeroHandicap.settings = {
+    npc_dota_hero_sniper = { damagePct = -12, attackRange = -100 },
+}
+```
+
+Applied via a new Lua modifier `modifier_neigh_handicap`
+(`bots/FretBots/modifiers/`, modeled on the existing party-hat modifier):
+`MODIFIER_PROPERTY_BASEDAMAGEOUTGOING_PERCENTAGE` −12% and
+`MODIFIER_PROPERTY_ATTACK_RANGE_BONUS` −100 (max Take Aim 950 → 850).
+Visible debuff (honest), unpurgable, permanent, persists through death.
+Applies to ANY hero matching the table — human or bot — so the rule is
+symmetric. Hooked on `npc_spawned` (same pattern as `Modifier:Initialize`),
+initialized from `FretBots.lua`, announced once in chat. Spells untouched —
+the nerf targets the right-click/range identity that causes the frustration.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is
