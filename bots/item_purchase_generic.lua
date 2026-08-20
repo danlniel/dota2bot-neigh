@@ -16,6 +16,7 @@ local ReactiveBuy = require( GetScriptDirectory()..'/FunLib/reactive_buy' )
 -- when fully affordable so we never half-build and stall the main queue.
 -- Runs at most once per few seconds and buys at most one reactive item.
 local reactiveNextCheck = 0
+local reactiveLongRangeMenace = nil -- nil = not checked yet
 local function _reactiveOwnedOrBuilding(itemName)
 	if J.HasItem(bot, itemName) then return true end
 	-- also skip if it's already in the hero's planned build (avoid double-buy)
@@ -70,6 +71,43 @@ local function ReactiveItemPurchase()
 	if not bot:IsAlive() or DotaTime() < 0 then return end
 
 	local bSquishy = Role.IsSupport(bot) or bot:GetPrimaryAttribute() ~= ATTRIBUTE_STRENGTH
+
+	-- 0) Proactive vs long-range menace (e.g. Sniper): known from the draft
+	--    or from any seen enemy with 620+ attack range (covers range talents).
+	--    Cores pre-arm a gap-close instead of waiting to be kited.
+	if iq.Proactive_Gap_Close ~= false and DotaTime() > 10 * 60 and J.IsCore(bot) then
+		if reactiveLongRangeMenace == nil then
+			reactiveLongRangeMenace = false
+			local tMenaceNames = {
+				npc_dota_hero_sniper = true,
+				npc_dota_hero_drow_ranger = true,
+				npc_dota_hero_clinkz = true,
+			}
+			for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+				local sName = GetSelectedHeroName(id)
+				if sName ~= nil and tMenaceNames[sName] then
+					reactiveLongRangeMenace = true
+					break
+				end
+			end
+		end
+		if reactiveLongRangeMenace == false then
+			for _, e in pairs(J.GetEnemyList(bot, 99999)) do
+				if J.IsValidHero(e) and e:GetAttackRange() >= 620 then
+					reactiveLongRangeMenace = true
+					break
+				end
+			end
+		end
+		if reactiveLongRangeMenace == true
+		and not J.HasItem(bot, 'item_blink')
+		and not J.HasItem(bot, 'item_force_staff')
+		and not J.HasItem(bot, 'item_hurricane_pike')
+		then
+			local sGap = bot:GetAttackRange() >= 350 and 'item_hurricane_pike' or 'item_force_staff'
+			if _tryReactiveBuy(sGap) then return end
+		end
+	end
 
 	-- 1) Physical right-click / long-range beating on us (the Sniper case):
 	--    squishy -> Ghost Scepter (immune to physical); durable core -> Blade Mail

@@ -265,6 +265,11 @@ Customize.ItemIQ = {
     Team_Defense = true,
     -- vs long-range kiters with no blink: grab a Force Staff to close/escape.
     Gap_Close = true,
+    -- proactive: if the enemy DRAFTED a long-range menace (Sniper/Drow/
+    -- Clinkz, or any seen enemy with 620+ attack range), cores pre-arm a
+    -- gap-close by minute 10 instead of waiting to be kited: ranged cores
+    -- buy Hurricane Pike, melee cores buy Force Staff.
+    Proactive_Gap_Close = true,
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).
