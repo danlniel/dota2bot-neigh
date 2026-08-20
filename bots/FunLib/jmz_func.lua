@@ -3506,35 +3506,13 @@ function J.GetAttackableWeakestUnit( bot, nRadius, bHero, bEnemy )
 end
 
 -- ==============================
--- Team focus-fire (roadmap 02)
+-- Team focus-fire (roadmap 02, VM-independent since 2026-08)
 -- ==============================
--- During a teamfight, the team's captain bot "calls" one kill target; the
--- targeting score in GetAttackableWeakestUnitFromList gives that unit a
--- bonus so the whole team converges instead of spreading damage.
--- Module state is per-VM = per-team, so each team runs its own calls.
-local teamFocusTarget = nil
-local teamFocusCallTime = -9999
-
--- The active called target, or nil if none/expired/dead/unkillable.
-function J.GetTeamFocusTarget()
-	local iq = GetFightIQ()
-	if iq == nil or iq.Team_Focus == false then return nil end
-
-	if DotaTime() - teamFocusCallTime > (iq.Team_Focus_Window or 6) then
-		return nil
-	end
-
-	if teamFocusTarget == nil
-	or not J.Utils.IsValidUnit(teamFocusTarget)
-	or not teamFocusTarget:CanBeSeen()
-	or J.CannotBeKilled(nil, teamFocusTarget)
-	or J.IsSuspiciousIllusion(teamFocusTarget)
-	then
-		return nil
-	end
-
-	return teamFocusTarget
-end
+-- Target selection is a deterministic pure function of team-shared game
+-- state (bots/FunLib/team_focus.lua): every bot computes the same answer,
+-- so no cross-VM shared state is needed. Cached per 3-second bucket.
+-- (J.GetTeamFocusTarget and the env plumbing are defined after
+-- IsNearEnemyTower below, which they capture lexically.)
 
 -- Priority lockdown target: the called focus target when it's a long-range
 -- attacker in cast range — hold sheep/orchid for the backliner instead of
@@ -3572,55 +3550,90 @@ local function IsNearEnemyTower(vLoc, nRadius)
 	return false
 end
 
--- Peacetime hunt ("group hunting"): outside teamfights, call an isolated,
--- reachable enemy so nearby bots converge and pick it off together —
--- the same play humans make against lone farming bots.
-local function ConsiderHuntCall(bot, iq)
-	if iq.Team_Hunt == false then return end
-	if J.IsInLaningPhase() then return end
+local TeamFocus = require(GetScriptDirectory()..'/FunLib/team_focus')
+local tFocusCache = { bucket = -1, target = nil }
 
-	for _, enemy in pairs(J.GetEnemiesNearLoc(bot:GetLocation(), 3000)) do
-		if J.IsValidHero(enemy)
-		and enemy:CanBeSeen()
-		and not J.IsSuspiciousIllusion(enemy)
-		and not J.CannotBeKilled(nil, enemy)
-		and #J.GetEnemiesNearLoc(enemy:GetLocation(), 1600) <= 1 -- isolated (only itself)
-		and #J.GetAlliesNearLoc(enemy:GetLocation(), 3500) >= 2  -- we can converge
-		and not IsNearEnemyTower(enemy:GetLocation(), 900)       -- no tower dives
-		then
-			teamFocusTarget = enemy
-			teamFocusCallTime = DotaTime()
-			IQDebug('hunt call by '..bot:GetUnitName()..' -> '..enemy:GetUnitName()
-				..' vm='..tostring(J))
-			return
-		end
-	end
+-- team_focus.lua uses dot-calls on plain tables; wrap real handles.
+local function _wrapUnit(u)
+	return {
+		GetLocation = function() return u:GetLocation() end,
+		GetArmor = function() return u:GetArmor() end,
+		GetHealth = function() return u:GetHealth() end,
+		GetMaxHealth = function() return u:GetMaxHealth() end,
+		GetAttackRange = function() return u:GetAttackRange() end,
+		GetAttackTarget = function() return u:GetAttackTarget() end,
+		IsStunned = function() return u:IsStunned() end,
+		IsHexed = function() return u:IsHexed() end,
+		IsRooted = function() return u:IsRooted() end,
+		IsNightmared = function() return u:IsNightmared() end,
+		GetUnitName = function() return u:GetUnitName() end,
+		handle = u,
+	}
 end
 
--- Called from mode desire polling; any bot may make a call when none is
--- active (the active-call-stands rule keeps calls stable, no thrash).
-function J.ConsiderTeamFocus(bot)
+local function _wrapList(tUnits)
+	local t = {}
+	for _, u in pairs(tUnits) do
+		t[#t + 1] = _wrapUnit(u)
+	end
+	return t
+end
+
+local function TeamFocusEnv()
+	return {
+		vector = function(x, y) return Vector(x, y, 0) end,
+		allies = function()
+			local t = {}
+			for i = 1, #GetTeamPlayers(GetTeam()) do
+				local m = GetTeamMember(i)
+				if m ~= nil and m:IsAlive() then t[#t + 1] = _wrapUnit(m) end
+			end
+			return t
+		end,
+		alliesNear = function(loc, r) return _wrapList(J.GetAlliesNearLoc(loc, r)) end,
+		enemiesNear = function(loc, r)
+			local t = {}
+			for _, e in pairs(J.GetEnemiesNearLoc(loc, r)) do
+				if J.IsValidHero(e) and e:CanBeSeen() and not J.IsSuspiciousIllusion(e) then
+					t[#t + 1] = _wrapUnit(e)
+				end
+			end
+			return t
+		end,
+		isValidTarget = function(w) return not J.CannotBeKilled(nil, w.handle) end,
+		nearEnemyTower = function(loc, r) return IsNearEnemyTower(loc, r) end,
+		distToLoc = function(w, loc) return GetUnitToLocationDistance(w.handle, loc) end,
+		isLaningPhase = function() return J.IsInLaningPhase() end,
+	}
+end
+
+-- The active called target, or nil if none/invalid. Same signature as the
+-- old stored-call version; all call sites unchanged.
+function J.GetTeamFocusTarget()
 	local iq = GetFightIQ()
-	if iq == nil or iq.Team_Focus == false then return end
-
-	if not bot:IsAlive() then return end
-
-	-- an active valid call stands until it expires or the target dies/escapes
-	if J.GetTeamFocusTarget() ~= nil then return end
-
-	if not J.IsInTeamFight(bot, 1600) then
-		ConsiderHuntCall(bot, iq)
-		return
+	if iq == nil or iq.Team_Focus == false then return nil end
+	local nBucket = TeamFocus.Bucket(DotaTime())
+	if tFocusCache.bucket ~= nBucket then
+		tFocusCache.bucket = nBucket
+		local prev = tFocusCache.target
+		local w = TeamFocus.Compute(TeamFocusEnv(), iq)
+		tFocusCache.target = w ~= nil and w.handle or nil
+		if tFocusCache.target ~= nil and tFocusCache.target ~= prev then
+			IQDebug('focus target -> '..tFocusCache.target:GetUnitName()
+				..' (deterministic, bucket '..nBucket..')')
+		end
 	end
-
-	local vFightLoc = J.GetTeamFightLocation(bot) or bot:GetLocation()
-	local nTarget = J.GetAttackableWeakestUnitFromList(bot, J.GetEnemiesNearLoc(vFightLoc, 1600))
-	if nTarget ~= nil then
-		teamFocusTarget = nTarget
-		teamFocusCallTime = DotaTime()
-		IQDebug('focus call by '..bot:GetUnitName()..' -> '..nTarget:GetUnitName()
-			..' vm='..tostring(J))
+	local t = tFocusCache.target
+	if t == nil or not J.Utils.IsValidUnit(t) or not t:CanBeSeen()
+	or J.CannotBeKilled(nil, t) or J.IsSuspiciousIllusion(t) then
+		return nil
 	end
+	return t
+end
+
+-- Kept for mode_team_roam_generic.lua — polling warms the bucket cache.
+function J.ConsiderTeamFocus(bot)
+	J.GetTeamFocusTarget()
 end
 
 -- Count alive enemies unaccounted for (unseen >4s or never seen).
