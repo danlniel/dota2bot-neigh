@@ -77,10 +77,16 @@ local function ReactiveItemPurchase()
 		local bKited, kiter = J.IsBeingKitedByLongerRange(bot)
 		local bHardHit = bot:WasRecentlyDamagedByAnyHero(2.0) and J.GetHP(bot) < 0.6
 		if bKited or bHardHit then
-			if bSquishy then
-				if _tryReactiveBuy('item_ghost') then return end
-			elseif not Role.IsSupport(bot) then
+			-- Blade Mail only where it's strong: heroes tanky enough to stand
+			-- in the damage while it reflects. Squishy cores skip Ghost (it
+			-- disables their own attacks) and fall through to the Force Staff
+			-- gap-close branch below — the human answer to being out-ranged.
+			local bDurable = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
+				or bot:GetMaxHealth() >= 1600
+			if bDurable and not Role.IsSupport(bot) then
 				if _tryReactiveBuy('item_blade_mail') then return end
+			elseif Role.IsSupport(bot) then
+				if _tryReactiveBuy('item_ghost') then return end
 			end
 		end
 	end
