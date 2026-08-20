@@ -286,6 +286,14 @@ the nerf targets the right-click/range identity that causes the frustration.
   diagnose after a real deploy (current build prints identifiable errors).
   Deploy script hardened: robocopy admin hint + post-copy verification of
   FretBots/HeroHandicap.lua.
+- **Resolution by assumption (2026-08-20, user directive "I'm ok with
+  assumption"):** Q1 = UNRESOLVED and moot — the Task 2 component fallback
+  makes reactive buys work under either engine answer. Q2 = UNRESOLVED —
+  instead of assuming an answer, Task 7 was BUILT, because the deterministic
+  recompute is correct under BOTH VM models (it uses no cross-VM state).
+  Plan closed: all 11 tasks done or safely superseded. A future playtest log
+  is still useful for confirming behavior in-game and for diagnosing the
+  runtime errors seen in attempt 1, but nothing is gated on it anymore.
 
 ## Sequencing gate
 

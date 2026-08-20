@@ -10,10 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-19-bot-iq-improvements-design.md`
 
-**Execution status (2026-08-20):** Tasks 2, 3, 4, 5, 6, 8, 9, 10, 11 DONE
-(committed individually, tests green, `/report` verified live through the
-tunnel). Task 1 PENDING — needs the user's diagnostic-game console.log.
-Task 7 GATED — runs only if Task 1 records "Q2: isolated".
+**Execution status (2026-08-20, final):** ALL TASKS CLOSED. Tasks 2-6, 8-11
+done (committed individually, tests green, `/report` verified live through
+the tunnel). Task 7 DONE — built by explicit user decision under uncertainty
+(deterministic recompute is correct under both VM models, so the Q2 gate
+became unnecessary). Task 1 resolved by assumption — see the spec's
+"Playtest evidence log"; attempt 1 was a stale deploy, and no verdict is
+needed anymore since nothing remains gated on it.
 
 ## Global Constraints
 
