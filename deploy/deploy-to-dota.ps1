@@ -1,0 +1,40 @@
+# Deploy the repo's bots/ folder into the local Dota 2 install.
+# Usage: .\deploy-to-dota.ps1 [-DotaPath "D:\Games\Steam\steamapps\common\dota 2 beta"]
+param(
+    [string]$DotaPath = ""
+)
+$ErrorActionPreference = "Stop"
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+
+function Find-DotaPath {
+    $steam = (Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -Name SteamPath -ErrorAction SilentlyContinue).SteamPath
+    if (-not $steam) { throw "Steam not found in registry; pass -DotaPath" }
+    $steam = $steam -replace "/", "\"
+    $libs = @($steam)
+    $libFile = Join-Path $steam "steamapps\libraryfolders.vdf"
+    if (Test-Path $libFile) {
+        Get-Content $libFile | ForEach-Object {
+            if ($_ -match '"path"\s+"([^"]+)"') { $libs += ($Matches[1] -replace "\\\\", "\") }
+        }
+    }
+    foreach ($lib in $libs) {
+        $candidate = Join-Path $lib "steamapps\common\dota 2 beta"
+        if (Test-Path $candidate) { return $candidate }
+    }
+    throw "dota 2 beta not found in any Steam library; pass -DotaPath"
+}
+
+if (-not $DotaPath) { $DotaPath = Find-DotaPath }
+$target = Join-Path $DotaPath "game\dota\scripts\vscripts\bots"
+if ($target -notmatch 'scripts\\vscripts\\bots$') {
+    throw "refusing to mirror onto '$target' - not a vscripts\bots folder"
+}
+
+Write-Host "repo:   $RepoRoot"
+Write-Host "target: $target"
+git -C $RepoRoot pull --ff-only
+$commit = git -C $RepoRoot rev-parse --short HEAD
+robocopy (Join-Path $RepoRoot "bots") $target /MIR /NFL /NDL /NJH /NJS | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+Write-Host "deployed commit $commit"
+Write-Host "in-game check: console prints '[IQ] FightIQ lib loaded (build ...)'"

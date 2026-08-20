@@ -58,6 +58,19 @@ Copy the repo's `bots/` folder into your Dota 2 vscripts folder:
 
 Correct result: `...\vscripts\bots\hero_selection.lua` exists.
 
+### One-click deploy (Windows)
+
+Double-click `deploy/deploy-to-dota.bat` (or run `deploy/deploy-to-dota.ps1`
+from PowerShell). It pulls the latest commit and mirrors `bots/` into your
+Dota 2 install — Steam is auto-detected, or pass
+`-DotaPath "D:\...\dota 2 beta"` explicitly. After it runs, the in-game
+console should print `[IQ] FightIQ lib loaded (build ...)` — that line is the
+proof the game loaded the fresh scripts.
+
+The mirror is exact: edits made directly in the game's `vscripts\bots`
+folder are overwritten. Change files in the repo (e.g.
+`bots/Customize/general.lua`) and redeploy instead.
+
 ### Step 3 — Configure (THIS is where the API key goes)
 
 Open **`...\vscripts\bots\Customize\general.lua`** in any text editor.
