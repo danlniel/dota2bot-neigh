@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-19-bot-iq-improvements-design.md`
 
+**Execution status (2026-08-20):** Tasks 2, 3, 4, 5, 6, 8, 9, 10, 11 DONE
+(committed individually, tests green, `/report` verified live through the
+tunnel). Task 1 PENDING — needs the user's diagnostic-game console.log.
+Task 7 GATED — runs only if Task 1 records "Q2: isolated".
+
 ## Global Constraints
 
 - Lua syntax must be verified with `luajit -bl <file>` — the Mac's `luac` is 5.4 and misses 5.1-only breakage.
