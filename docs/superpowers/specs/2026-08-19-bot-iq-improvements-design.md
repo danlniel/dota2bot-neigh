@@ -275,6 +275,18 @@ the nerf targets the right-click/range identity that causes the frustration.
    sheep/orchid lands on Sniper in fights, and no bot dies in lane standing
    still while being kited (it disengages below ~55% HP instead).
 
+## Playtest evidence log
+
+- **Attempt 1 (2026-08-20, console.8955941909.log):** STALE DEPLOY — game ran
+  the July-14 copy. Proof: fork loaded ("Open Neigh AI" welcome,
+  custom_loader warn) but zero `[IQ]` lines, no House-rule announce, no
+  /director traffic on the Pi despite a full 56-min game. Per the Task 1
+  matrix: verdicts NOT recorded. Also observed: ~20 squelched
+  "Script Runtime Error: error in error handling" from ~18 min game time —
+  diagnose after a real deploy (current build prints identifiable errors).
+  Deploy script hardened: robocopy admin hint + post-copy verification of
+  FretBots/HeroHandicap.lua.
+
 ## Sequencing gate
 
 Phase order and the Q1/Q2 decision matrix live in the implementation plan.

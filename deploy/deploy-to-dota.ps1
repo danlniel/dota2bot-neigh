@@ -41,6 +41,14 @@ if (Test-Path (Join-Path $RepoRoot ".git")) {
     $commit = "unknown (not a git clone)"
 }
 robocopy (Join-Path $RepoRoot "bots") $target /MIR /NFL /NDL /NJH /NJS | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+if ($LASTEXITCODE -ge 8) {
+    throw "robocopy failed with exit code $LASTEXITCODE - if the target is under Program Files, re-run this script AS ADMINISTRATOR (right-click -> Run as administrator)"
+}
+# prove the copy actually landed: spot-check a file that only exists in current builds
+$marker = Join-Path $target "FretBots\HeroHandicap.lua"
+if (-not (Test-Path $marker)) {
+    throw "deploy verification FAILED: $marker missing after copy - the game folder was NOT updated"
+}
+Write-Host "deploy verified: HeroHandicap.lua present in target"
 Write-Host "deployed commit $commit"
 Write-Host "in-game check: console prints '[IQ] FightIQ lib loaded (build ...)'"
