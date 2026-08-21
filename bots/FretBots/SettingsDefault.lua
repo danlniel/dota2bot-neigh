@@ -105,6 +105,19 @@
 			scale 				= {1.2, 1.1, 1.0, 0.9, 0.9},
 			perMinuteScale		= 0.5
 		},
+		-- Comeback boost (2026-08-21): when a bot TEAM is behind in total
+		-- networth, its per-minute award ceiling and death bonuses scale up.
+		-- A local rubber-band (mirror of the ahead-throttle) that works even
+		-- when the ML director is unreachable. Applies to whichever bot team
+		-- is losing — ally bots included.
+		comeback =
+		{
+			enabled = true,
+			-- networth deficit fraction at which the boost reaches maxBoost
+			deficitForMax = 0.30,
+			-- award multiplier at (or past) deficitForMax; set 1.0 to disable
+			maxBoost = 2.0,
+		},
 		deathBonus =
 		{
 			-- Order awards are given (useful when maxAwards is less than number of types)

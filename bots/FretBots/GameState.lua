@@ -90,6 +90,42 @@ function GameState:GetThrottle()
 	return throttle, BotTeam
 end
 
+-- Comeback boost: multiplier >= 1 for a team's bonus awards based on its
+-- total-networth deficit. The mirror of GetThrottle: throttle trims awards
+-- when the bots run away with the game, this lifts a bot team that is being
+-- run over — and it needs no ML server to work.
+local comebackAnnounced = {}
+function GameState:GetComebackBoost(team)
+	local cfg = (Settings ~= nil and Settings.comeback) or {}
+	if cfg.enabled == false then return 1 end
+	local maxBoost = cfg.maxBoost or 2.0
+	local deficitForMax = cfg.deficitForMax or 0.30
+	if maxBoost <= 1 or deficitForMax <= 0 then return 1 end
+	local nwTeam, nwEnemy = 0, 0
+	for id = 0, 23 do
+		if PlayerResource:IsValidPlayerID(id) then
+			local playerTeam = PlayerResource:GetTeam(id)
+			if playerTeam == team then
+				nwTeam = nwTeam + PlayerResource:GetNetWorth(id)
+			elseif playerTeam == RADIANT or playerTeam == DIRE then
+				nwEnemy = nwEnemy + PlayerResource:GetNetWorth(id)
+			end
+		end
+	end
+	if nwEnemy <= nwTeam or nwEnemy <= 0 then return 1 end
+	local deficit = (nwEnemy - nwTeam) / nwEnemy
+	local t = deficit / deficitForMax
+	if t > 1 then t = 1 end
+	local boost = 1 + t * (maxBoost - 1)
+	-- announce once per team when the boost becomes substantial
+	if boost >= 1.5 and not comebackAnnounced[team] and Utilities ~= nil then
+		comebackAnnounced[team] = true
+		Utilities:Print('Comeback boost active: the losing bot team now receives up to x'
+			..maxBoost..' bonuses until it recovers.')
+	end
+	return boost
+end
+
 -- Increments the botLead variable based on points and the team that scored them
 -- Note that the team here is the owner of the dead building, so logic is inverted
 function GameState:IncrementBotLead(points, team)

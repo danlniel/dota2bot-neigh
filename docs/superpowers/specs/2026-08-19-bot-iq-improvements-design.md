@@ -233,6 +233,27 @@ symmetric. Hooked on `npc_spawned` (same pattern as `Modifier:Initialize`),
 initialized from `FretBots.lua`, announced once in chat. Spells untouched —
 the nerf targets the right-click/range identity that causes the frustration.
 
+### 11. Comeback rubber-band — losing bots' economy stops collapsing (`bots/FretBots/`) — added 2026-08-21
+
+**Problem (user report: "their exp and gpm fall if they lose").** Three
+compounding causes found: (a) death-bonus ranges were halved 2026-07-11 with
+the ML director promised as the upward compensator — but the director has
+reached the server in zero games since 2026-07-14; (b) `AwardBonus:GetValue`
+halves death bonuses AGAIN below difficulty 5 (quartering the originals);
+(c) nothing boosts a losing team — `GetThrottle` only trims bots that are
+ahead, and the per-minute catch-up is clamped at ~30–45 gold/min regardless
+of deficit.
+
+**Design.** `GameState:GetComebackBoost(team)` — the local mirror of
+`GetThrottle`, no server needed: multiplier 1→`maxBoost` (default 2.0)
+scaling linearly with the team's total-networth deficit, maxing at a 30%
+deficit (`Settings.comeback`, tunable/disable-able). Applied at two points:
+the per-minute award ceiling (`adjustedClamp × boost`) so gpm/xpm catch-up
+can actually close gaps, and death-bonus values (`GetValue`), where a losing
+team also skips the low-difficulty 0.5 cliff. Symmetric: ally bots behind
+get it too. Announces once in chat when it exceeds 1.5×. The ahead-throttle
+and the ML director are untouched and compose with it.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is

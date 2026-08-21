@@ -295,6 +295,13 @@ function AwardBonus:GetValue(bot, award)
 	else
 		diffMultiplier = 1.5
 	end
+	-- comeback: a losing bot team keeps full-strength death bonuses (no
+	-- low-difficulty 0.5 cliff) and scales further up with its deficit
+	local comebackBoost = GameState:GetComebackBoost(bot.stats.team)
+	if comebackBoost > 1 then
+		if diffMultiplier < 1 then diffMultiplier = 1 end
+		diffMultiplier = diffMultiplier * comebackBoost
+	end
 	scaled = scaled * diffMultiplier
 
 	-- Round and maybe clamp
@@ -473,6 +480,12 @@ function AwardBonus:GetSpecificPerMinuteBonus(bot, pmBot, roleTable, settings)
 		local adjustedClamp = settings.clamp[2]
 		if settings.perMinuteScale ~= 0 then
 			adjustedClamp = adjustedClamp + settings.perMinuteScale * minutes
+		end
+		-- comeback: a losing bot team gets a higher catch-up ceiling, so its
+		-- gpm/xpm can actually close the gap instead of falling ever further
+		local comebackBoost = GameState:GetComebackBoost(bot.stats.team)
+		if comebackBoost > 1 then
+			adjustedClamp = adjustedClamp * comebackBoost
 		end
 		pmClamped = Utilities:RoundedClamp(pmDifference, settings.clamp[1], adjustedClamp)
 	else
