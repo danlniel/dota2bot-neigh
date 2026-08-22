@@ -3566,6 +3566,7 @@ local function _wrapUnit(u)
 		IsHexed = function() return u:IsHexed() end,
 		IsRooted = function() return u:IsRooted() end,
 		IsNightmared = function() return u:IsNightmared() end,
+		IsChanneling = function() return u:IsChanneling() end,
 		GetUnitName = function() return u:GetUnitName() end,
 		handle = u,
 	}
@@ -3861,6 +3862,11 @@ function J.GetAttackableWeakestUnitFromList( bot, unitList )
 					-- prefer targets that are disabled right now (bonuses are additive: score can be negative)
 					if unit:IsStunned() or unit:IsHexed() or unit:IsRooted() or unit:IsNightmared() then
 						score = score - unit:GetMaxHealth() * 0.12
+					end
+					-- kill the channeler: a channeling enemy (Upheaval,
+					-- Black Hole, TP) is stationary and high-value
+					if unit:IsChanneling() then
+						score = score - unit:GetMaxHealth() * 0.15
 					end
 					-- focus fire: prefer targets allies are already attacking
 					for _, ally in pairs(tNearbyAllies) do

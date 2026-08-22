@@ -58,6 +58,11 @@ function M.Compute(env, iq)
 			if e.IsStunned() or e.IsHexed() or e.IsRooted() or e.IsNightmared() then
 				score = score - e.GetMaxHealth() * 0.12
 			end
+			-- kill the channeler: a channeling enemy (Upheaval, Black Hole,
+			-- TP) is stationary and high-value — converge on it
+			if e.IsChanneling() then
+				score = score - e.GetMaxHealth() * 0.15
+			end
 			score = score - nAttackers * e.GetMaxHealth() * 0.08
 			if e.GetAttackRange() >= 550 then
 				score = score - e.GetMaxHealth() * 0.06

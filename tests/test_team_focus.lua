@@ -12,6 +12,7 @@ local function unit(name, opts)
 	u.GetAttackRange = function() return opts.range or 150 end
 	u.GetAttackTarget = function() return opts.attacking end
 	u.IsStunned = function() return opts.stunned or false end
+	u.IsChanneling = function() return opts.channeling or false end
 	u.IsHexed = function() return false end
 	u.IsRooted = function() return false end
 	u.IsNightmared = function() return false end
@@ -61,6 +62,12 @@ end
 local d1 = unit('healthy', { x = 500, y = 0 })
 local d2 = unit('stunned', { x = 500, y = 100, stunned = true })
 assert(TF.Compute(makeEnv({ a1, a2 }, { d1, d2 }), {}) == d2)
+
+-- channeling casters (Upheaval, Black Hole, TP) are preferred: stationary,
+-- high-value, and killing them ends the channel
+local c1 = unit('idle', { x = 500, y = 0 })
+local c2 = unit('channeler', { x = 500, y = 100, channeling = true })
+assert(TF.Compute(makeEnv({ a1, a2 }, { c1, c2 }), {}) == c2)
 
 -- long-range backliners are preferred over an otherwise-identical melee
 local m = unit('melee', { x = 500, y = 0 })
