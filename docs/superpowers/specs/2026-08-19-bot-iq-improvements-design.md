@@ -254,6 +254,28 @@ team also skips the low-difficulty 0.5 cliff. Symmetric: ally bots behind
 get it too. Announces once in chat when it exceeds 1.5×. The ahead-throttle
 and the ML director are untouched and compose with it.
 
+### 12. Warlock counters: kill the channeler, fight-or-flee the golem — added 2026-08-22
+
+**Problem (user report).** Bots freeze during Upheaval instead of going for
+the caster, and ignore the summoned golem while it kills them.
+
+**Root causes.** (a) No targeting path valued channeling enemies — only
+Sheepstick/Orchid holders interrupted, and Upheaval avoidance existed only
+in the laning phase. (b) `aba_special_units.lua`'s golem logic compared raw
+damage against `J.GetHP` FRACTIONS (0..1), so "can kill it" was never true;
+the branch was also fully disabled during teamfights and used solo damage
+only; nothing anywhere made a bot flee a golem it couldn't kill.
+
+**Design.** Channeling enemies get a 15% max-HP targeting bonus in BOTH
+paths (`GetAttackableWeakestUnitFromList` and the deterministic team-focus
+scorer, unit-tested) — bots converge on a channeling Warlock. Golem: kill
+math fixed to raw health and made team-based (allies within 900); a golem
+attacking the bot or an ally that the team can kill yields desire 0.75
+regardless of teamfight state; the same fraction bug was fixed in the
+dominated-units branch; and a new `J.GetDangerousSummonChasingMe` retreat
+hook makes a weakened bot that can't burst the golem alone disengage
+instead of feeding it.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is
