@@ -206,6 +206,20 @@ function GetDesireHelper()
         end
     end
 
+    -- A summoned bruiser (Warlock golem) is on us and we can't burst it
+    -- alone: running beats feeding it. The kill-it case is handled by
+    -- aba_special_units with team damage.
+    do
+        local hSummon = J.GetDangerousSummonChasingMe(bot)
+        if hSummon ~= nil and botHP < 0.75 then
+            local nSoloDamage = bot:GetAttackDamage() * bot:GetAttackSpeed() * 5.0
+            if #J.GetAlliesNearLoc(bot:GetLocation(), 900) < 2
+            and nSoloDamage < hSummon:GetHealth() then
+                return RemapValClamped(botHP, 0.75, 0.3, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_VERYHIGH)
+            end
+        end
+    end
+
     if X.LowChanceToRun() then
         return BOT_MODE_DESIRE_MODERATE
     end

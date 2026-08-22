@@ -3799,6 +3799,22 @@ function J.IsBeingKitedByLongerRange(bot)
 	return false, nil
 end
 
+-- A summoned bruiser (Warlock golem) that is actively attacking/chasing the
+-- bot. Used by retreat: a golem you can't burst must be run from, not fed.
+-- (aba_special_units handles the "kill it" side when team damage suffices.)
+function J.GetDangerousSummonChasingMe(bot)
+	for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES)) do
+		if J.IsValid(unit)
+		and string.find(unit:GetUnitName(), 'warlock_golem')
+		and GetUnitToUnitDistance(bot, unit) < 900
+		and (unit:GetAttackTarget() == bot or J.IsChasingTarget(unit, bot))
+		then
+			return unit
+		end
+	end
+	return nil
+end
+
 -- Deep in enemy territory, no ally nearby, and 2+ enemies unaccounted for:
 -- the setup every human gank squad looks for. Used to back bots off —
 -- unless the team is dominating, in which case pressing into enemy

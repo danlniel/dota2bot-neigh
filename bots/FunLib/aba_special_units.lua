@@ -267,7 +267,8 @@ function X.GetDesire(bot__)
                     if not J.IsInTeamFight(bot, 1200)
                     and not (J.IsRetreating(bot) and not J.IsRealInvisible(bot))
                     and withinAttackRange
-                    and botAttackDamage > unitHP and unitAttackDamage < botHealth
+                    -- raw health, not the J.GetHP fraction (same bug as golem)
+                    and botAttackDamage > unit:GetHealth() and unitAttackDamage < botHealth
                     then
                         return 0.5
                     end
@@ -339,31 +340,49 @@ function X.GetDesire(bot__)
 
                 if string.find(unitName, 'warlock_golem')
                 then
-                    botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 5)
+                    -- Team-based kill math with RAW health. The old check
+                    -- compared damage against J.GetHP fractions (0..1), so
+                    -- "can kill it" was mathematically never true and bots
+                    -- ignored the golem while it beat them to death.
                     local unitAttackDamage = X.GetUnitAttackDamageWithinTime(unit, 5)
+                    local tKillers = {}
+                    for _, ally in pairs(tAllyHeroes) do
+                        if J.IsValidHero(ally) and J.IsInRange(ally, unit, 900) then
+                            table.insert(tKillers, ally)
+                        end
+                    end
+                    local teamDamage = X.GetTotalAttackDamage(tKillers, 5.0)
+                    local canKillGolem = teamDamage > unit:GetHealth()
+                        and unitAttackDamage * 1.2 < botHealth
 
-                    if not J.IsInTeamFight(bot, 1600)
-                    and #tAllyHeroes_all >= #tEnemyHeroes_all
-                    then
-                        local canKillGolem = botAttackDamage > unitHP and unitAttackDamage * 1.2 < botHP
-
-                        if J.IsInRange(bot, unit, botAttackRange + 300)
-                        then
-                            if not X.IsUnitAfterUnit(unit, bot)
-                            or (X.IsUnitAfterUnit(unit, bot) and canKillGolem)
-                            then
-                                return 0.35
-                            else
-                                return 0.25
-                            end
-                        else
-                            if not X.IsUnitAfterUnit(unit, bot)
-                            or (X.IsUnitAfterUnit(unit, bot) and canKillGolem)
-                            then
-                                return 0.25
+                    local bOnMeOrAlly = X.IsUnitAfterUnit(unit, bot)
+                    if not bOnMeOrAlly then
+                        for _, ally in pairs(tAllyHeroes) do
+                            if J.IsValidHero(ally) and X.IsUnitAfterUnit(unit, ally) then
+                                bOnMeOrAlly = true
+                                break
                             end
                         end
                     end
+
+                    if canKillGolem and bOnMeOrAlly
+                    then
+                        -- it is killing someone and we can take it down —
+                        -- do it, teamfight or not (a dead golem is most of
+                        -- a won fight against Warlock)
+                        if J.IsInRange(bot, unit, botAttackRange + 300) then return 0.75 end
+                        return 0.5
+                    end
+
+                    if canKillGolem
+                    and not J.IsInTeamFight(bot, 1600)
+                    and #tAllyHeroes_all >= #tEnemyHeroes_all
+                    then
+                        if J.IsInRange(bot, unit, botAttackRange + 300) then return 0.45 end
+                        return 0.3
+                    end
+                    -- can't kill it: never stand and tank it — the retreat
+                    -- logic (J.GetDangerousSummonChasingMe) handles the run
                 end
             end
 		end
