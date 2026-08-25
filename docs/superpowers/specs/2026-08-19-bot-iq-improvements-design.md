@@ -276,6 +276,29 @@ dominated-units branch; and a new `J.GetDangerousSummonChasingMe` retreat
 hook makes a weakened bot that can't burst the golem alone disengage
 instead of feeding it.
 
+### 13. Invisibility counters that survive the late game (Sand King) — added 2026-08-22
+
+**Problem (user report).** Late game vs Sand King's Sand Storm: bots buy no
+sentries/dust and stand in the storm doing nothing.
+
+**Root causes.** Purchase: sentries were pos-4-only and gated on net worth
+< 25k (supports pass that late — sentries stop exactly when invis heroes
+peak); dust needed 2 free slots, was skipped by sentry-holders, and cores
+never bought it. Usage: sentry placement triggered only against a VISIBLE
+enemy with invisibility — an already-invisible Sand King never qualified
+(dust usage already reacted to the storm debuff and to unseen damage).
+Behavior: the Sand Storm/Macropyre avoidance desire scaled to zero at full
+HP, so healthy bots idled inside the storm.
+
+**Design.** Purchase gates: the 25k sentry cap applies only when no invis
+enemy exists; pos 5 also stocks sentries vs invis enemies after 15 min;
+dust needs 1 free slot, sentry-holders may buy it, and cores (pos 1–3) buy
+dust after 20 min when an invis hero was drafted. Sentry usage gains two
+evidence-based triggers: the Sand Storm debuff on the bot (plant on self)
+and damage from an unseen player whose last-seen position is within 800
+(plant toward it, capped at cast range). Avoidance desire floors at
+MODERATE so idle bots leave damaging zones while real fights still outbid it.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is
