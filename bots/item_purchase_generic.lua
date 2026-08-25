@@ -931,13 +931,27 @@ function ItemPurchaseThink()
 			and Role['invisEnemyExist'] == true
 			and buyBootsStatus == true
 			and botGold >= GetItemCost( "item_dust" )
-			and Item.GetEmptyInventoryAmount( bot ) >= 2
+			-- dust is one slot; late-game inventories are tight (was >= 2), and
+			-- holding a sentry is no reason to skip dust (was excluded)
+			and Item.GetEmptyInventoryAmount( bot ) >= 1
 			and Item.GetItemCharges( bot, "item_dust" ) <= 0
 			and botCourierValue == 0
-			and not J.HasItem(bot, 'item_ward_sentry')
 		then
 			bot:ActionImmediate_PurchaseItem( "item_dust" )
 		end
+	end
+
+	-- Cores vs invisible enemies past mid-game: a human core carries dust
+	-- against Riki/Sand King/Clinkz — supports alone can't cover every fight.
+	if Role['invisEnemyExist'] == true
+	and J.GetPosition(bot) <= 3
+	and DotaTime() > 20 * 60
+	and botGold >= GetItemCost( "item_dust" ) + 500
+	and Item.GetEmptyInventoryAmount( bot ) >= 1
+	and Item.GetItemCharges( bot, "item_dust" ) <= 0
+	and botCourierValue == 0
+	then
+		bot:ActionImmediate_PurchaseItem( "item_dust" )
 	end
 
 	-- Init Healing Items in Lane; works for now
@@ -1029,14 +1043,20 @@ function ItemPurchaseThink()
 		end
 	end
 
-	-- Observer and Sentry Wards
-	if J.GetPosition(bot) == 4 and DotaTime() > 300 and botWorth < 25000
+	-- Observer and Sentry Wards. The 25k net-worth cap made supports stop
+	-- buying sentries in the late game — exactly when an invisible enemy
+	-- (Sand King, Riki) is at its strongest. Keep the cap only when no
+	-- invisible enemy exists; pos 5 joins in against invis enemies.
+	local bInvisEnemy = Role['invisEnemyExist'] == true
+	if DotaTime() > 300
+	and ((J.GetPosition(bot) == 4 and (botWorth < 25000 or bInvisEnemy))
+		or (J.GetPosition(bot) == 5 and bInvisEnemy and DotaTime() > 15 * 60))
 	then
 		local wardType = 'item_ward_sentry'
 
 		if GetItemStockCount(wardType) > 1
 		and botGold >= GetItemCost(wardType)
-		and Item.GetEmptyInventoryAmount(bot) >= 2
+		and Item.GetEmptyInventoryAmount(bot) >= (bInvisEnemy and 1 or 2)
 		and Item.GetItemCharges(bot, wardType) < 1
 		and botCourierValue == 0
 		then

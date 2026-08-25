@@ -160,7 +160,10 @@ function GetDesireHelper()
 
     if HasModifierThatNeedToAvoidEffects() then
         IsAvoidingAbilityZone = true
-        return RemapValClamped(J.GetHP(bot), 0.3, 1, BOT_ACTION_DESIRE_VERYHIGH, BOT_ACTION_DESIRE_NONE)
+        -- floor at MODERATE (was NONE at full HP): a healthy bot standing in
+        -- Sand Storm/Macropyre "doing nothing" is exactly the failure to
+        -- avoid; real fights still outbid this, idling does not
+        return RemapValClamped(J.GetHP(bot), 0.3, 1, BOT_ACTION_DESIRE_VERYHIGH, BOT_ACTION_DESIRE_MODERATE)
     end
 
     if not J.IsFarming(bot) and not J.IsPushing(bot) and not J.IsDefending(bot)

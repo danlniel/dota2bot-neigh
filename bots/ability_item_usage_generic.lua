@@ -5939,6 +5939,36 @@ X.ConsiderItemDesire["item_ward_sentry"] = function( hItem )
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE )
 	local nAllyTowerList = bot:GetNearbyTowers( 1200, false )
 
+	-- Already-invisible attacker (Sand Storm, Riki on us): the visible-enemy
+	-- scan below can't see him, so react to the evidence instead — the storm
+	-- debuff on us, or damage from a player we can't see whose last known
+	-- position is close.
+	if (bot:HasModifier('modifier_sandking_sand_storm_slow')
+		or bot:HasModifier('modifier_sandking_sand_storm_slow_aura_thinker'))
+	and not J.Site.IsLocationHaveTrueSight( bot:GetLocation() )
+	then
+		return BOT_ACTION_DESIRE_HIGH, bot:GetLocation(), sCastType, '插真眼: sand storm'
+	end
+	if #nInRangeEnmyList == 0 and bot:WasRecentlyDamagedByAnyHero( 1.0 )
+	then
+		for _, id in pairs( GetTeamPlayers( GetOpposingTeam() ) )
+		do
+			if IsHeroAlive( id ) and bot:WasRecentlyDamagedByPlayer( id, 1.0 )
+			then
+				local info = GetHeroLastSeenInfo( id )
+				local dInfo = info ~= nil and info[1] or nil
+				if dInfo ~= nil and dInfo.location ~= nil
+				and dInfo.time_since_seen ~= nil and dInfo.time_since_seen < 6
+				and GetUnitToLocationDistance( bot, dInfo.location ) < 800
+				and not J.Site.IsLocationHaveTrueSight( dInfo.location )
+				then
+					local nDist = GetUnitToLocationDistance( bot, dInfo.location )
+					hEffectTarget = J.GetXUnitsTowardsLocation2( bot:GetLocation(), dInfo.location, math.min( nDist, nCastRange ) )
+					return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, '插真眼: unseen attacker'
+				end
+			end
+		end
+	end
 
 	--进攻时对拥有隐身能力的敌人使用
 	if J.IsGoingOnSomeone( bot )
