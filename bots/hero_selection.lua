@@ -490,8 +490,22 @@ end
 -- Team snapshots & lane utilities
 --==============================================================================
 
+-- Bots wait for humans on BOTH teams to lock in (so enemy bots can
+-- counter-pick the player) up to Customize.DraftIQ.Wait_For_Humans_Seconds
+-- after selection starts; past it they pick anyway so nobody times out.
+local okDraftCustomize, DraftCustomize = pcall(require, GetScriptDirectory()..'/FunLib/custom_loader')
+if not okDraftCustomize then DraftCustomize = nil end
+local function HumanWaitSeconds()
+	local d = DraftCustomize and DraftCustomize.DraftIQ
+	return (d and d.Wait_For_Humans_Seconds) or 40
+end
+local function PickDeadlineSeconds()
+	local d = DraftCustomize and DraftCustomize.DraftIQ
+	return (d and d.Pick_Deadline_Seconds) or 55
+end
+
 function X.IsHumanNotReady( nTeam )
-	if GameTime() > 20 or bLineupReserve then return false end
+	if GameTime() > HumanWaitSeconds() or bLineupReserve then return false end
 	local humanCount, readyCount = 0, 0
 	for _, id in pairs( GetTeamPlayers( nTeam ) ) do
         if not IsPlayerBot( id ) then
@@ -939,6 +953,14 @@ local function InitPickScheduleOnce()
 	local jitter_min, jitter_max = 1, 3   -- small variability per slot
 
 	local teamPlayers = GetTeamPlayers(GetTeam(), true)
+	-- compress the spread when we waited long for humans: every slot must
+	-- lock before the pick deadline
+	local budget = PickDeadlineSeconds() - base - jitter_max
+	if #teamPlayers > 1 and budget > 0 then
+		step = math.min(step, budget / (#teamPlayers - 1))
+	elseif budget <= 0 then
+		step = 0.5
+	end
 	for slot = 1, #teamPlayers do
 		-- tiny jitter per-slot for a more organic feel
 		local jitter = RandomFloat(jitter_min, jitter_max)

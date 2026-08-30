@@ -38,6 +38,7 @@ require 'bots.FretBots.RoleDetermination'
 require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
 require 'bots.FretBots.HeroHandicap'
+require 'bots.FretBots.CounterSwap'
 
 -- =====================================================================
 -- ML Director (adaptive difficulty via model server, see ml/README.md)
@@ -211,6 +212,10 @@ function FretBots:PlayersLoadedTimer()
 			Debug:Print('Settings not finalized yet! Waiting.')
 			return 1
 		end
+		-- Post-pick counter swap FIRST, so every initializer below binds to
+		-- the final roster (it rewrites AllBots/AllUnits entries on a swap)
+		local okSwap, errSwap = pcall(CounterSwap.Initialize, CounterSwap)
+		if not okSwap then print('[CounterSwap] failed: '..tostring(errSwap)) end
 		-- Register EntityKilled Listener
 		EntityKilled:RegisterEvents()
 		-- Set all bots to find tier 1 neutrals
