@@ -299,6 +299,49 @@ and damage from an unseen player whose last-seen position is within 800
 (plant toward it, capped at cast range). Avoidance desire floors at
 MODERATE so idle bots leave damaging zones while real fights still outbid it.
 
+### 14. Lockdown answers to a drafted right-click carry (Troll Warlord) — added 2026-08-31
+
+**Problem (user report).** A human Troll Warlord is "too broken"; bots never
+itemize lockdown against him.
+
+**Design.** `ItemIQ.Anti_Rightclick` (default on). `J.tRightclickMenace` =
+Troll, Ursa, Slark, PA. If the enemy drafted one, from 18 min cores ensure
+the team owns two lockdown/disarm items: STR cores buy Heaven's Halberd
+(disarm), other cores Orchid (silence — Battle Trance can't be cast while
+silenced); past 28 min a non-STR core adds a Sheepstick if nobody has one.
+Team-deduped by inspecting ally inventories (`J.HasItem` on allies). The
+sheep/orchid hold-for-target helper now also prioritizes these heroes, so
+the lockdown lands on the carry. Supports keep their existing Ghost/Glimmer
+answers.
+
+### 15. Draft adaptation: wait for the human's pick, counter-swap after — added 2026-08-31
+
+**Problem (user report).** Bots pick first; if the player picks later, the
+bot roster never answers it; asked for roster changes even after picking.
+
+**Root cause.** `hero_selection.lua` already waited for humans on both teams
+— but `IsHumanNotReady` gave up after a hard 20 s, so a normal-speed human
+was always out-waited and the existing counter-pick scorer saw nothing.
+
+**Design.** (a) Bots VM: wait becomes `DraftIQ.Wait_For_Humans_Seconds`
+(40) and the pick spread compresses so all slots lock by
+`DraftIQ.Pick_Deadline_Seconds` (55) — assumption: the lobby pick timer is
+longer than that; tune down if bots ever get auto-randomed. (b) Addon VM:
+new `FretBots/CounterSwap.lua` runs once all heroes have spawned (before the
+other FretBots initializers bind to the roster). Humans must all be on one
+team; on the other team it finds the bot most countered by the human
+hero(es) (`matchups[bot][human]` summed; ≥ 2.0) and the best available
+counter among bot-playable heroes (weak/buggy/micro heroes excluded) that
+improves the matchup by ≥ 3.0, then `PlayerResource:ReplaceHeroWith` with
+the old hero's gold plus item refunds, rebinds `AllBots`/`AllUnits` entries
+carrying the stats table, and announces the swap in chat. Max 1 swap.
+(c) Bots VM: `J.IsStaleARDMHero` is ungated from ARDM — the ARDM hero-swap
+handling in item purchase and ability usage now runs in every mode (a no-op
+when names never change), so the swapped bot reloads its build.
+**Risk (unverified in-game):** `ReplaceHeroWith` in a normal lobby is the
+only path here the ARDM mode did not already exercise; the swap is pcall-
+guarded and fully disable-able via `CounterSwap.settings.enabled`.
+
 ## Approaches considered and rejected
 
 - **Wait for Q1 before writing any fallback** — rejected: the fallback is
