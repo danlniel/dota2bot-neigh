@@ -247,6 +247,13 @@ Customize.LaneIQ = {
 Customize.DraftIQ = {
     Enable = true,
     Comp_Completeness = true,
+    -- Bots wait for humans on BOTH teams to lock in — so enemy bots can
+    -- counter-pick the player — up to this many seconds after selection
+    -- starts (was a hard 20s, which is why bots usually picked first).
+    Wait_For_Humans_Seconds = 40,
+    -- Every bot must have locked by this time; the pick spread compresses
+    -- to fit. Keep it under the lobby's pick timer.
+    Pick_Deadline_Seconds = 55,
 }
 
 -- Item IQ: reactive itemization on top of each hero's static build. Buys a
@@ -270,6 +277,11 @@ Customize.ItemIQ = {
     -- gap-close by minute 10 instead of waiting to be kited: ranged cores
     -- buy Hurricane Pike, melee cores buy Force Staff.
     Proactive_Gap_Close = true,
+    -- vs a drafted fast right-click carry (Troll/Ursa/Slark/PA): cores make
+    -- sure the team owns two lockdown/disarm answers by 18 min — STR cores
+    -- Heaven's Halberd, others Orchid — and a non-STR core adds a Sheepstick
+    -- past 28 min if nobody has one.
+    Anti_Rightclick = true,
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).

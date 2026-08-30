@@ -17,6 +17,7 @@ local ReactiveBuy = require( GetScriptDirectory()..'/FunLib/reactive_buy' )
 -- Runs at most once per few seconds and buys at most one reactive item.
 local reactiveNextCheck = 0
 local reactiveLongRangeMenace = nil -- nil = not checked yet
+local reactiveRightclickMenace = nil -- nil = not checked yet
 local function _reactiveOwnedOrBuilding(itemName)
 	if J.HasItem(bot, itemName) then return true end
 	-- also skip if it's already in the hero's planned build (avoid double-buy)
@@ -174,6 +175,47 @@ local function ReactiveItemPurchase()
 		local bKited = J.IsBeingKitedByLongerRange(bot)
 		if bKited and not J.HasItem(bot, 'item_blink') then
 			if _tryReactiveBuy('item_force_staff') then return end
+		end
+	end
+
+	-- 6) Anti right-click carry (Troll/Ursa/Slark/PA, see J.tRightclickMenace):
+	--    once the enemy drafted one, the team wants two lockdown/disarm answers
+	--    by the mid-game — STR cores take Heaven's Halberd (disarm), other
+	--    cores Orchid (silence + amp) — and past 28 min a non-STR core adds a
+	--    Sheepstick if nobody has one. Team-deduped by inspecting ally items.
+	if iq.Anti_Rightclick ~= false and DotaTime() > 18 * 60
+	and J.IsCore(bot) and not Role.IsSupport(bot) then
+		if reactiveRightclickMenace == nil then
+			reactiveRightclickMenace = false
+			for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
+				local sName = GetSelectedHeroName(id)
+				if sName ~= nil and J.tRightclickMenace[sName] then
+					reactiveRightclickMenace = true
+					break
+				end
+			end
+		end
+		if reactiveRightclickMenace == true then
+			local tLock = { 'item_heavens_halberd', 'item_orchid', 'item_bloodthorn', 'item_sheepstick' }
+			local nTeamLock, bTeamHex = 0, false
+			for i = 1, #GetTeamPlayers(GetTeam()) do
+				local ally = GetTeamMember(i)
+				if ally ~= nil then
+					for _, sLock in ipairs(tLock) do
+						if J.HasItem(ally, sLock) then
+							nTeamLock = nTeamLock + 1
+							if sLock == 'item_sheepstick' then bTeamHex = true end
+						end
+					end
+				end
+			end
+			local bStr = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
+			if nTeamLock < 2 then
+				if _tryReactiveBuy(bStr and 'item_heavens_halberd' or 'item_orchid') then return end
+			end
+			if not bStr and not bTeamHex and DotaTime() > 28 * 60 then
+				if _tryReactiveBuy('item_sheepstick') then return end
+			end
 		end
 	end
 end

@@ -3514,16 +3514,26 @@ end
 -- (J.GetTeamFocusTarget and the env plumbing are defined after
 -- IsNearEnemyTower below, which they capture lexically.)
 
+-- Fast right-click carries whose counter is lockdown/disarm (Troll's Battle
+-- Trance can't be cast while silenced; Halberd disarms all of them). Shared
+-- by reactive itemization and the lockdown-priority targeting below.
+J.tRightclickMenace = {
+	npc_dota_hero_troll_warlord = true,
+	npc_dota_hero_ursa = true,
+	npc_dota_hero_slark = true,
+	npc_dota_hero_phantom_assassin = true,
+}
+
 -- Priority lockdown target: the called focus target when it's a long-range
--- attacker in cast range — hold sheep/orchid for the backliner instead of
--- burning them on the nearest frontliner.
+-- attacker or a right-click menace in cast range — hold sheep/orchid for
+-- the carry instead of burning them on the nearest frontliner.
 function J.GetLongRangeLockTarget(bot, nCastRange)
 	local iq = GetFightIQ()
 	if iq == nil or iq.Avoid_Long_Range == false then return nil end
 	local target = J.GetTeamFocusTarget()
 	if target ~= nil
 	and J.IsValidHero(target)
-	and target:GetAttackRange() >= 550
+	and (target:GetAttackRange() >= 550 or J.tRightclickMenace[target:GetUnitName()])
 	and not J.IsDisabled(target)
 	and GetUnitToUnitDistance(bot, target) <= nCastRange
 	then
@@ -6409,10 +6419,9 @@ end
 -- Uses two signals: name comparison (definitive) and IsHeroAlive (covers edge cases
 -- where GetBot() hasn't updated yet but the player already has a new alive hero).
 function J.IsStaleARDMHero(cachedBot, cachedName)
-	if GetGameMode() ~= GAMEMODE_ARDM then
-		return false, cachedBot, cachedName
-	end
-
+	-- Runs in every mode since 2026-08-31: FretBots' CounterSwap replaces a
+	-- bot's hero post-pick in normal lobbies too. In games where nothing is
+	-- swapped, names never change and this is a no-op.
 	local freshBot = GetBot()
 	local freshName = freshBot:GetUnitName()
 	local nPlayerID = cachedBot:GetPlayerID()
