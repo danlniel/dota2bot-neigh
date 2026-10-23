@@ -121,8 +121,11 @@ do
 					failureCount = 0
 					local success, resObj = pcall(function() return mlJson.decode(response.Body) end)
 					if success then ApplyDirective(resObj) end
+				elseif response.StatusCode == 401 then
+					-- wrong/missing key won't fix itself mid-game; say so plainly
+					Disable('server rejected the API key (HTTP 401) - run deploy-to-dota.bat and enter the key')
 				else
-					CountFailure('server unreachable at '..SERVER_URL)
+					CountFailure('server unreachable at '..SERVER_URL..' (HTTP '..tostring(response.StatusCode)..')')
 				end
 			end)
 		end)

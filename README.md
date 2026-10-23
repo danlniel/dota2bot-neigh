@@ -71,9 +71,17 @@ The mirror is exact: edits made directly in the game's `vscripts\bots`
 folder are overwritten. Change files in the repo (e.g.
 `bots/Customize/general.lua`) and redeploy instead.
 
-### Step 3 — Configure (THIS is where the API key goes)
+**API key:** the first run asks for the ML server key once and saves it to
+`deploy\ml_api_key.txt` (gitignored). Every deploy injects it into the
+deployed `general.lua`. Don't paste the key into `general.lua` yourself: the
+game copy gets overwritten, and an edited repo copy makes the next
+`git pull` fail, so the deploy silently uses old files. To change the key,
+re-run with `-ApiKey <key>` or edit `deploy\ml_api_key.txt`.
 
-Open **`...\vscripts\bots\Customize\general.lua`** in any text editor.
+### Step 3 — Configure (manual install only)
+
+Using the one-click deploy? Skip this step. The key is handled for you
+(see above). For a manual copy, open **`...\vscripts\bots\Customize\general.lua`** in any text editor.
 Everything you can tune is in this ONE file:
 
 ```lua
@@ -102,8 +110,10 @@ Customize.ML = {
 No key / no server? Just set `Customize.ML.Enable = false` — everything else
 still works, bots simply use the static settings.
 
-> Tip: copy the whole `Customize` folder to `...\vscripts\game\Customize` —
-> settings there survive script updates.
+> Careful with `...\vscripts\game\Customize\general.lua`: if that file
+> exists, it **replaces** the shipped settings entirely. An old copy hides
+> every new setting and the injected key. The deploy script warns when it
+> finds one.
 
 ### Step 4 — Play
 

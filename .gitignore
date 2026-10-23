@@ -70,4 +70,5 @@ game/Customize
 # ML server runtime artifacts
 ml/data/
 ml/.env
+deploy/ml_api_key.txt
 ml/__pycache__/
