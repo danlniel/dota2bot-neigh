@@ -60,7 +60,7 @@ end
 -- One-time load announce: proves THIS copy of the scripts is what the game
 -- loaded, and the printed table address shows whether bots share a team VM
 -- (one identical line per team) or run isolated (one distinct line per bot).
-IQDebug('FightIQ lib loaded (build 2026-08-19), vm='..tostring(J))
+IQDebug('FightIQ lib loaded (build 2026-10-23), vm='..tostring(J))
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
