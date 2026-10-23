@@ -18,8 +18,18 @@ local ReactiveBuy = require( GetScriptDirectory()..'/FunLib/reactive_buy' )
 local reactiveNextCheck = 0
 local reactiveLongRangeMenace = nil -- nil = not checked yet
 local reactiveRightclickMenace = nil -- nil = not checked yet
+local tLockdownBotPositions = nil -- positions held by bots, cached once complete
+local tLockdownStrByPos = {}
+local tReactiveQueued = {} -- counters already moved to the front of the build
+local _queueReactiveItem -- defined after the purchase state machine helpers
+local function _ownedAnywhere(unit, itemName)
+	-- main, backpack and stash: J.HasItem only sees the main six, which
+	-- made a backpacked counter look missing and get bought again
+	local nSlot = unit:FindItemSlot(itemName)
+	return nSlot >= 0 and nSlot <= 14
+end
 local function _reactiveOwnedOrBuilding(itemName)
-	if J.HasItem(bot, itemName) then return true end
+	if _ownedAnywhere(bot, itemName) then return true end
 	-- also skip if it's already in the hero's planned build (avoid double-buy)
 	if bot.currBuyingItemInPurchaseList == itemName then return true end
 	return false
@@ -178,13 +188,19 @@ local function ReactiveItemPurchase()
 		end
 	end
 
-	-- 6) Anti right-click carry (Troll/Ursa/Slark/PA, see J.tRightclickMenace):
-	--    once the enemy drafted one, the team wants two lockdown/disarm answers
-	--    by the mid-game — STR cores take Heaven's Halberd (disarm), other
-	--    cores Orchid (silence + amp) — and past 28 min a non-STR core adds a
-	--    Sheepstick if nobody has one. Team-deduped by inspecting ally items.
-	if iq.Anti_Rightclick ~= false and DotaTime() > 18 * 60
-	and J.IsCore(bot) and not Role.IsSupport(bot) then
+	-- 6) Anti right-click carry (Troll/Ursa/Slark/PA, see J.tRightclickMenace).
+	--    The old version lump-bought at 18 min only when the bot held the
+	--    full 3300-5200 gold at once — the build queue spends gold as it
+	--    comes, so that almost never happened. Now the counter is QUEUED at
+	--    the front of the build and assembled component by component:
+	--    two assigned cores (mid, offlane; the carry steps in for a human)
+	--    take Halberd (STR) or Orchid, the first non-STR one adds a
+	--    Sheepstick later if the team has no hex, and supports pre-arm a
+	--    Ghost Scepter. If the team still owns no answer 10 min after the
+	--    start, any bot core queues one (covers role mis-detection).
+	if iq.Anti_Rightclick ~= false then
+		local nStart = (iq.Anti_Rightclick_Minute or 12) * 60
+		if DotaTime() < nStart then return end
 		if reactiveRightclickMenace == nil then
 			reactiveRightclickMenace = false
 			for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
@@ -195,26 +211,119 @@ local function ReactiveItemPurchase()
 				end
 			end
 		end
-		if reactiveRightclickMenace == true then
-			local tLock = { 'item_heavens_halberd', 'item_orchid', 'item_bloodthorn', 'item_sheepstick' }
-			local nTeamLock, bTeamHex = 0, false
-			for i = 1, #GetTeamPlayers(GetTeam()) do
-				local ally = GetTeamMember(i)
-				if ally ~= nil then
-					for _, sLock in ipairs(tLock) do
-						if J.HasItem(ally, sLock) then
-							nTeamLock = nTeamLock + 1
-							if sLock == 'item_sheepstick' then bTeamHex = true end
-						end
+		if reactiveRightclickMenace ~= true then return end
+
+		local tLock = { 'item_heavens_halberd', 'item_orchid', 'item_bloodthorn', 'item_sheepstick', 'item_abyssal_blade' }
+		local nTeamLock, bTeamHex = 0, false
+		local tPositions, nResolved = {}, 0
+		local tTeamIds = GetTeamPlayers(GetTeam())
+		for i = 1, #tTeamIds do
+			local ally = GetTeamMember(i)
+			if ally ~= nil and not ally:IsNull() then
+				nResolved = nResolved + 1
+				if ally:IsBot() then
+					local nAllyPos = J.GetPosition(ally)
+					tPositions[nAllyPos] = true
+					tLockdownStrByPos[nAllyPos] = ally:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
+				end
+				for _, sLock in ipairs(tLock) do
+					if _ownedAnywhere(ally, sLock) then
+						nTeamLock = nTeamLock + 1
+						if sLock == 'item_sheepstick' then bTeamHex = true end
 					end
 				end
 			end
-			local bStr = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
-			if nTeamLock < 2 then
-				if _tryReactiveBuy(bStr and 'item_heavens_halberd' or 'item_orchid') then return end
+		end
+		-- freeze the assignment once every teammate resolved, so a dead or
+		-- missing ally can't reshuffle who owes the team a counter
+		if tLockdownBotPositions == nil and nResolved == #tTeamIds then
+			tLockdownBotPositions = tPositions
+		end
+		if tLockdownBotPositions == nil then return end
+
+		local nPos = J.GetPosition(bot)
+		local bStr = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH
+		if nPos <= 3 then
+			local bAssigned = ReactiveBuy.IsLockdownBuyer(nPos, tLockdownBotPositions, 2)
+			-- fallback waits long enough for an assigned mid to finish its Orchid
+			-- (other bots' queues aren't visible across VMs, only owned items)
+			local bFallback = nTeamLock == 0 and DotaTime() > nStart + 10 * 60
+			local sLockItem = ReactiveBuy.LockdownItemFor(bStr)
+			local bOwnLock = false
+			for _, sLock in ipairs(tLock) do
+				if _ownedAnywhere(bot, sLock) then bOwnLock = true end
 			end
-			if not bStr and not bTeamHex and DotaTime() > 28 * 60 then
-				if _tryReactiveBuy('item_sheepstick') then return end
+			if (bAssigned or bFallback) and not bOwnLock and nTeamLock < 2 then
+				if _queueReactiveItem(sLockItem) then return end
+			end
+			-- hex: the first assigned non-STR core, once its first answer is done
+			if bAssigned and bOwnLock and not bTeamHex and not bStr
+			and DotaTime() > (iq.Anti_Rightclick_Hex_Minute or 25) * 60 then
+				local nHexPos = nil
+				for _, p in ipairs({ 2, 3, 1 }) do
+					if ReactiveBuy.IsLockdownBuyer(p, tLockdownBotPositions, 2)
+					and tLockdownStrByPos[p] == false then
+						nHexPos = p
+						break
+					end
+				end
+				if nHexPos == nPos then
+					if _queueReactiveItem('item_sheepstick') then return end
+				end
+			end
+		elseif iq.Anti_Rightclick_Support_Ghost ~= false
+		and not _ownedAnywhere(bot, 'item_ethereal_blade')
+		then
+			-- supports are the carry's first meal: Ghost Form makes them
+			-- immune to his right-clicks (Battle Trance included)
+			if _queueReactiveItem('item_ghost') then return end
+		end
+	end
+end
+
+-- Inventory guard: a counter that combined or landed in the backpack
+-- (main six full) can't be cast — item usage only scans the main slots.
+-- Move it into the main inventory in place of the cheapest item that isn't
+-- boots, another counter, or protected.
+local tPromoteFromBackpack = {
+	item_orchid = true, item_bloodthorn = true, item_sheepstick = true,
+	item_heavens_halberd = true, item_abyssal_blade = true, item_ghost = true,
+	item_black_king_bar = true, item_force_staff = true, item_hurricane_pike = true,
+	item_blade_mail = true, item_glimmer_cape = true, item_nullifier = true,
+}
+local promoteNextCheck = 0
+local function PromoteBackpackCounters()
+	if DotaTime() < promoteNextCheck then return end
+	promoteNextCheck = DotaTime() + 2
+	for nBpSlot = 6, 8 do
+		local hBpItem = bot:GetItemInSlot(nBpSlot)
+		if hBpItem ~= nil and tPromoteFromBackpack[hBpItem:GetName()] then
+			local nBpCost = GetItemCost(hBpItem:GetName())
+			local nBestSlot, nBestCost = -1, nBpCost
+			for nSlot = 0, 5 do
+				local hItem = bot:GetItemInSlot(nSlot)
+				if hItem == nil then
+					nBestSlot, nBestCost = nSlot, -1
+					break
+				end
+				local sName = hItem:GetName()
+				local nCost = GetItemCost(sName)
+				if nCost < nBestCost
+				and not tPromoteFromBackpack[sName]
+				and not Item.IsCanNotSwitchItem(sName)
+				and not string.find(sName, 'boots')
+				and sName ~= 'item_power_treads' and sName ~= 'item_guardian_greaves'
+				then
+					nBestSlot, nBestCost = nSlot, nCost
+				end
+			end
+			if nBestSlot ~= -1 then
+				local iqf = Customize.FightIQ
+				if iqf ~= nil and iqf.Debug == true then
+					print('[IQ] '..botName..' backpack -> main: '..hBpItem:GetName())
+				end
+				bot:ActionImmediate_SwapItems(nBpSlot, nBestSlot)
+				return
 			end
 		end
 	end
@@ -399,6 +508,22 @@ local function _resetCurrentTarget()
 	bot.currBuyingBasicItemList = {}
 	bot.currBuyingBasicItemRefList = {}
 	bot.currBuyingRequiredCounts = nil
+end
+
+-- Reactive counter as the next build item (once per item per game). The
+-- interrupted target resumes afterwards; its owned parts are kept and
+-- skipped by _stillNeeds when it's rebuilt.
+_queueReactiveItem = function(itemName)
+	if tReactiveQueued[itemName] or _reactiveOwnedOrBuilding(itemName) then return false end
+	tReactiveQueued[itemName] = true
+	if not ReactiveBuy.QueueFront(bot.purchaseListInReverseOrder, itemName) then return false end
+	_resetCurrentTarget()
+	bot.rebuildCount = 0
+	local iqf = Customize.FightIQ
+	if iqf ~= nil and iqf.Debug == true then
+		print('[IQ] '..botName..' queued counter '..itemName..' (pos'..J.GetPosition(bot)..')')
+	end
+	return true
 end
 
 local function GeneralPurchase()
@@ -653,6 +778,7 @@ function ItemPurchaseThink()
 
 	-- reactive defensive items (A3) — augments the static build, gold-gated
 	ReactiveItemPurchase()
+	PromoteBackpackCounters()
 
 	-- ARDM: detect stale hero instance and rebuild purchase list on hero swap
 	local isStale, freshBot, freshName = J.IsStaleARDMHero(bot, botName)

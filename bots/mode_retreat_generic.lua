@@ -220,6 +220,22 @@ function GetDesireHelper()
         end
     end
 
+    -- A trancing Troll can't die ("damage does not kill you" for the
+    -- trance) — trading hits only feeds his lifesteal. Step out of reach
+    -- for the duration; lockdown items still fire while retreating.
+    for _, enemy in pairs(nEnemyHeroes) do
+        if J.IsValidHero(enemy)
+        and enemy:HasModifier('modifier_troll_warlord_battle_trance')
+        and enemy:GetAttackTarget() == bot
+        and not J.IsDisabled(enemy)
+        and not enemy:IsDisarmed()
+        and not bot:HasModifier('modifier_ghost_state')
+        and botHP < 0.85
+        then
+            return RemapValClamped(botHP, 0.85, 0.3, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_ABSOLUTE)
+        end
+    end
+
     if X.LowChanceToRun() then
         return BOT_MODE_DESIRE_MODERATE
     end

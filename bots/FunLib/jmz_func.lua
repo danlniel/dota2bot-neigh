@@ -3542,6 +3542,51 @@ function J.GetLongRangeLockTarget(bot, nCastRange)
 	return nil
 end
 
+-- Right-click carry to lock down right now, independent of the focus call.
+-- GetLongRangeLockTarget only fires on the team focus target, and Battle
+-- Trance scores -1 in J.ScoreEnemyTarget (damage can't kill him), so a
+-- trancing Troll was never anyone's target: bots held hex/disarm through
+-- exactly the window they exist for. sKind gates what still works:
+--   'silence' before the trance only (it stops the cast, not the swings),
+--   'hex' / 'disarm' while he's swinging, 'pierce' through BKB (Abyssal).
+function J.GetRightclickMenaceLock(bot, nCastRange, sKind)
+	local iq = J.Customize and J.Customize.ItemIQ
+	if iq == nil or iq.Enable == false or iq.Anti_Rightclick == false then return nil end
+	local best, bestScore = nil, -1
+	for _, enemy in pairs(J.GetNearbyHeroes(bot, math.min(nCastRange, 1600), true, BOT_MODE_NONE)) do
+		if J.IsValidHero(enemy)
+		and J.tRightclickMenace[enemy:GetUnitName()]
+		and not J.IsSuspiciousIllusion(enemy)
+		and not enemy:IsHexed()
+		and not enemy:IsStunned()
+		and not enemy:IsInvulnerable()
+		then
+			local bTrance = enemy:HasModifier('modifier_troll_warlord_battle_trance')
+			local hVictim = enemy:GetAttackTarget()
+			local bHittingHero = hVictim ~= nil and hVictim:IsHero() and hVictim:GetTeam() == bot:GetTeam()
+			local bEngaged = bTrance or bHittingHero
+				or bot:WasRecentlyDamagedByHero(enemy, 2.0)
+				or J.IsInTeamFight(bot, 1200)
+			local bUsable = false
+			if sKind == 'silence' then
+				bUsable = not bTrance and not enemy:IsSilenced() and not enemy:IsMagicImmune()
+			elseif sKind == 'hex' then
+				bUsable = not enemy:IsMagicImmune()
+			elseif sKind == 'disarm' then
+				bUsable = hVictim ~= nil and not enemy:IsDisarmed() and not enemy:IsMagicImmune()
+			elseif sKind == 'pierce' then
+				bUsable = true
+			end
+			if bEngaged and bUsable then
+				local score = (bTrance and 3 or 0) + (bHittingHero and 2 or 0)
+					+ (1 - GetUnitToUnitDistance(bot, enemy) / nCastRange)
+				if score > bestScore then best, bestScore = enemy, score end
+			end
+		end
+	end
+	return best
+end
+
 local TOWER_ID_LIST = {
 	TOWER_TOP_1, TOWER_TOP_2, TOWER_TOP_3,
 	TOWER_MID_1, TOWER_MID_2, TOWER_MID_3,
