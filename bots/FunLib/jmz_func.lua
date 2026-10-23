@@ -3542,6 +3542,16 @@ function J.GetLongRangeLockTarget(bot, nCastRange)
 	return nil
 end
 
+-- Deny targets must be real lane creeps: allied-creep queries also return
+-- summons like Tidehunter's Leviathan's Catch fish, which bots kept
+-- "denying" (upstream PR #163). Siege creeps are npc_dota_*_siege, not
+-- npc_dota_creep_*, so they're allowed explicitly.
+function J.IsDeniableLaneCreep(creep)
+	local sName = creep:GetUnitName()
+	return string.find(sName, 'npc_dota_creep_') ~= nil
+		or string.find(sName, '_siege') ~= nil
+end
+
 -- Right-click carry to lock down right now, independent of the focus call.
 -- GetLongRangeLockTarget only fires on the team focus target, and Battle
 -- Trance scores -1 in J.ScoreEnemyTarget (damage can't kill him), so a
@@ -5270,6 +5280,17 @@ function J.WeAreStronger(bot, nRadius)
 		if ok and type(fFogPressure) == 'number' then
 			enemyPower = enemyPower + fFogPressure
 		end
+	end
+
+	-- enemy towers count against us exactly like ours count for us above —
+	-- the one-sided version made fights under enemy towers look winnable
+	-- (upstream PR #154). Added after fog pressure, which estimates from
+	-- hero power only.
+	local nEnemyTowers = bot:GetNearbyTowers(600, true)
+	if J.IsValidBuilding(nEnemyTowers[1]) then
+		local fGlyph = nEnemyTowers[1]:HasModifier('modifier_fountain_glyph') and 2 or 1
+		enemyPower = enemyPower + #nEnemyTowers
+			* (math.sqrt(Max(0, nEnemyTowers[1]:GetAttackDamage() * nEnemyTowers[1]:GetAttackSpeed() * 5.0 * fGlyph)))
 	end
 
 	local fCommitMargin = (iq and iq.Commit_Margin) or 1.0

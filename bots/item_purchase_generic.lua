@@ -996,10 +996,17 @@ function ItemPurchaseThink()
 	botStashValue = bot:GetStashValue()
 	botDistanceFromFountain = bot:DistanceFromFountain()
 
-	-- try to recover own dropped items (generic, not only for bear)
+	-- try to recover own dropped items (generic, not only for bear) — but not
+	-- the ones dropped on purpose (late consumables in team_roam's
+	-- TrySellOrDropItem, 30-min lotuses below): picking those straight back
+	-- up looped every 3 s and cleared the bot's queued actions each time
+	-- (upstream PR #166)
 	local dropped = GetDroppedItemList()
 	for _, d in pairs(dropped) do
-		if d ~= nil and d.owner == bot and d.item ~= nil and not string.find(d.item:GetName(), 'token') then
+		if d ~= nil and d.owner == bot and d.item ~= nil and not string.find(d.item:GetName(), 'token')
+		and not Utils.HasValue(Item['tEarlyConsumableItem'], d.item:GetName())
+		and d.item:GetName() ~= 'item_famango' and d.item:GetName() ~= 'item_great_famango'
+		then
 			local dist = GetUnitToLocationDistance(bot, d.location)
 			if dist > 200 and dist < 1000 then
 				bot:Action_MoveToLocation(d.location)
@@ -1225,7 +1232,7 @@ function ItemPurchaseThink()
 		if GetItemStockCount(wardType) > 1
 		and botGold >= GetItemCost(wardType)
 		and Item.GetEmptyInventoryAmount(bot) >= (bInvisEnemy and 1 or 2)
-		and Item.GetItemCharges(bot, wardType) < 1
+		and Item.GetWardCharges(bot, wardType) < 1
 		and botCourierValue == 0
 		then
 			bot:ActionImmediate_PurchaseItem(wardType)
@@ -1239,7 +1246,7 @@ function ItemPurchaseThink()
 		if GetItemStockCount(wardType) > 1
 		and botGold >= GetItemCost(wardType)
 		and Item.GetEmptyInventoryAmount(bot) >= 2
-		and Item.GetItemCharges(bot, wardType) < 2
+		and Item.GetWardCharges(bot, wardType) < 2
 		and botCourierValue == 0
 		then
 			bot:ActionImmediate_PurchaseItem(wardType)

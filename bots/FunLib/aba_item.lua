@@ -1283,6 +1283,33 @@ function Item.GetItemCharges( bot, itemName )
 
 end
 
+-- Observer + sentry wards held together merge into item_ward_dispenser,
+-- which an exact-name count reads as 0 — a support carrying both then
+-- re-bought wards every tick and drained the stock (upstream PR #168).
+-- Dispenser: current charges = observers, secondary = sentries. If the
+-- secondary read fails, count it as 1 so we under-buy rather than drain.
+function Item.GetWardCharges( bot, wardType )
+
+	local charges = Item.GetItemCharges( bot, wardType )
+	for i = 0, 16
+	do
+		local item = bot:GetItemInSlot( i )
+		if item ~= nil and item:GetName() == 'item_ward_dispenser'
+		then
+			if wardType == 'item_ward_observer'
+			then
+				charges = charges + item:GetCurrentCharges()
+			else
+				local ok, nSentry = pcall( function() return item:GetSecondaryCharges() end )
+				charges = charges + ( ( ok and type( nSentry ) == 'number' ) and nSentry or 1 )
+			end
+		end
+	end
+
+	return charges
+
+end
+
 
 function Item.GetNeutralItemCount( bot )
 
