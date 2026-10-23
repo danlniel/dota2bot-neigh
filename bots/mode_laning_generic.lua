@@ -171,6 +171,7 @@ function GetBestDenyCreep(hCreepList)
 		and J.GetHP(creep) < 0.49
 		and J.CanBeAttacked(creep)
 		and creep:GetHealth() <= attackDamage
+		and J.IsDeniableLaneCreep(creep)
 		then
 			return creep
 		end

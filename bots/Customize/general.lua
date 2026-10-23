@@ -277,11 +277,20 @@ Customize.ItemIQ = {
     -- gap-close by minute 10 instead of waiting to be kited: ranged cores
     -- buy Hurricane Pike, melee cores buy Force Staff.
     Proactive_Gap_Close = true,
-    -- vs a drafted fast right-click carry (Troll/Ursa/Slark/PA): cores make
-    -- sure the team owns two lockdown/disarm answers by 18 min — STR cores
-    -- Heaven's Halberd, others Orchid — and a non-STR core adds a Sheepstick
-    -- past 28 min if nobody has one.
+    -- vs a drafted fast right-click carry (Troll/Ursa/Slark/PA): from
+    -- Anti_Rightclick_Minute the mid + offlane bots (carry steps in for a
+    -- human) put a lockdown item at the FRONT of their build — STR: Heaven's
+    -- Halberd, others: Orchid — built piece by piece, not lump-bought. The
+    -- first non-STR one adds a Sheepstick past Anti_Rightclick_Hex_Minute if
+    -- the team has no hex. Bots then spend it on the carry the moment he
+    -- engages (silence before Battle Trance; hex/disarm/Abyssal during it),
+    -- and step away from a trancing Troll they can't lock down.
     Anti_Rightclick = true,
+    Anti_Rightclick_Minute = 12,
+    Anti_Rightclick_Hex_Minute = 25,
+    -- supports pre-arm a Ghost Scepter vs the same carries (immune to his
+    -- right-clicks); used as soon as he swings at them below 75% HP.
+    Anti_Rightclick_Support_Ghost = true,
 }
 
 -- ML integration: connect the bots to a local model server (see ml/README.md).

@@ -50,4 +50,41 @@ function M.MissingComponents(tComponents, ownedCounts)
 	return missing
 end
 
+-- Which bot cores owe the team a lockdown answer to a right-click carry.
+-- Deterministic from team-shared state (positions held by bots), so every
+-- bot agrees without cross-VM state: mid first, then offlane, then carry
+-- (the carry keeps its farming build unless humans hold mid/offlane).
+-- tBotPositions: set of positions played by bots, e.g. { [2] = true }.
+local tLockdownOrder = { 2, 3, 1 }
+function M.IsLockdownBuyer(nMyPos, tBotPositions, nWanted)
+	local nAssigned = 0
+	for _, nPos in ipairs(tLockdownOrder) do
+		if nAssigned >= nWanted then return false end
+		if tBotPositions[nPos] then
+			nAssigned = nAssigned + 1
+			if nPos == nMyPos then return true end
+		end
+	end
+	return false
+end
+
+-- STR cores disarm (Halberd), everyone else silences (Orchid: Battle
+-- Trance, Shadow Dance and Phantom Strike can't be cast while silenced).
+function M.LockdownItemFor(bStrength)
+	return bStrength and 'item_heavens_halberd' or 'item_orchid'
+end
+
+-- Make itemName the next buy of a reverse-order purchase list (the LAST
+-- entry is bought next). Later copies are removed so a counter that was
+-- already planned is moved up, not bought twice. The interrupted target
+-- stays directly below and resumes afterwards. Returns true if changed.
+function M.QueueFront(tReverseList, itemName)
+	if tReverseList[#tReverseList] == itemName then return false end
+	for i = #tReverseList, 1, -1 do
+		if tReverseList[i] == itemName then table.remove(tReverseList, i) end
+	end
+	tReverseList[#tReverseList + 1] = itemName
+	return true
+end
+
 return M

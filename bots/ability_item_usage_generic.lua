@@ -1131,10 +1131,19 @@ X.ConsiderItemDesire = {}
 --深渊
 X.ConsiderItemDesire["item_abyssal_blade"] = function( hItem )
 
-	local nCastRange = 620 + aetherRange
+	-- Overwhelm is melee range now (150) and pierces debuff immunity. The
+	-- old 620 made bots walk 470 units into the enemy to stun — while
+	-- retreating too. Consider a short approach on top of the real range.
+	local nCastRange = 150 + aetherRange + 100
 	local sCastType = 'unit'
 	local hEffectTarget = nil
 	local sCastMotive = nil
+
+	-- ItemIQ: stun an engaging right-click carry, through his BKB
+	local hMenace = J.GetRightclickMenaceLock(bot, nCastRange + 200, 'pierce')
+	if hMenace ~= nil and X.IsWithoutSpellShield(hMenace) then
+		return BOT_ACTION_DESIRE_HIGH, hMenace, sCastType, 'ItemIQ: stun carry'
+	end
 
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
@@ -1143,7 +1152,7 @@ X.ConsiderItemDesire["item_abyssal_blade"] = function( hItem )
 	do
 
 		if J.IsValid( npcEnemy )
-			and J.CanCastOnNonMagicImmune( npcEnemy )
+			and J.CanCastOnMagicImmune( npcEnemy )
 			and X.IsWithoutSpellShield( npcEnemy )
 		then
 			--打断
@@ -1171,7 +1180,7 @@ X.ConsiderItemDesire["item_abyssal_blade"] = function( hItem )
 	then
 		if J.IsValidHero( botTarget )
 			and J.IsInRange( bot, botTarget, nCastRange + 50 )
-			and J.CanCastOnNonMagicImmune( botTarget ) --bug
+			and J.CanCastOnMagicImmune( botTarget )
 			and X.IsWithoutSpellShield( botTarget )
 			and not J.IsDisabled( botTarget )
 		then
@@ -2537,6 +2546,19 @@ X.ConsiderItemDesire["item_ghost"] = function( hItem )
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
+	-- ItemIQ: a right-click carry is on me — ghost now, don't wait for the
+	-- 500 HP line below (Troll in trance clears that in under a second)
+	for _, npcEnemy in pairs( hNearbyEnemyHeroList )
+	do
+		if J.IsValidHero( npcEnemy )
+			and J.tRightclickMenace[npcEnemy:GetUnitName()]
+			and not J.IsSuspiciousIllusion( npcEnemy )
+			and npcEnemy:GetAttackTarget() == bot
+			and J.GetHP( bot ) < 0.75
+		then
+			return BOT_ACTION_DESIRE_HIGH, npcEnemy, sCastType, 'ItemIQ: ghost vs carry'
+		end
+	end
 
 	if bot:GetAttackTarget() == nil
 		or bot:GetHealth() < 500
@@ -2879,12 +2901,17 @@ end
 --天堂
 X.ConsiderItemDesire["item_heavens_halberd"] = function( hItem )
 
-	local nCastRange = 700 + aetherRange
+	local nCastRange = 750 + aetherRange
 	local sCastType = 'unit'
 	local hEffectTarget = nil
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
+	-- ItemIQ: disarm a swinging right-click carry (trancing Troll first)
+	local hMenace = J.GetRightclickMenaceLock(bot, nCastRange, 'disarm')
+	if hMenace ~= nil and X.IsWithoutSpellShield(hMenace) then
+		return BOT_ACTION_DESIRE_HIGH, hMenace, sCastType, 'ItemIQ: disarm carry'
+	end
 
 	local targetHero = nil
 	local targetHeroDamage = 0
@@ -3778,6 +3805,12 @@ X.ConsiderItemDesire["item_orchid"] = function( hItem )
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
+	-- ItemIQ: silence an engaging right-click carry before he can trance
+	local hMenace = J.GetRightclickMenaceLock(bot, nCastRange, 'silence')
+	if hMenace ~= nil and X.IsWithoutSpellShield(hMenace) then
+		return BOT_ACTION_DESIRE_HIGH, hMenace, sCastType, 'ItemIQ: silence carry'
+	end
+
 	-- FightIQ: hold the orchid for a called long-range backliner in range
 	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
 	if hLockTarget ~= nil
@@ -4313,11 +4346,17 @@ end
 --羊刀
 X.ConsiderItemDesire["item_sheepstick"] = function( hItem )
 
-	local nCastRange = 700 + aetherRange
+	local nCastRange = 800 + aetherRange
 	local sCastType = 'unit'
 	local hEffectTarget = nil
 	local sCastMotive = nil
 	local nInRangeEnmyList = J.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+
+	-- ItemIQ: hex a swinging right-click carry (trancing Troll first)
+	local hMenace = J.GetRightclickMenaceLock(bot, nCastRange, 'hex')
+	if hMenace ~= nil and X.IsWithoutSpellShield(hMenace) then
+		return BOT_ACTION_DESIRE_HIGH, hMenace, sCastType, 'ItemIQ: hex carry'
+	end
 
 	-- FightIQ: hold the sheep for a called long-range backliner in range
 	local hLockTarget = J.GetLongRangeLockTarget(bot, nCastRange)
@@ -6535,7 +6574,7 @@ end
 --行巫之祸
 X.ConsiderItemDesire["item_heavy_blade"] = function( hItem )
 
-	local nCastRange = 500
+	local nCastRange = hItem:GetCastRange() + aetherRange -- 700 since 7.41d
 	local sCastType = 'unit'
 	local hEffectTarget = nil
 	local sCastMotive = nil

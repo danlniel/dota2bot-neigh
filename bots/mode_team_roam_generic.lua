@@ -670,6 +670,7 @@ function X.CarryFindTarget()
 					and not X.IsLastHitCreep(creep,denyDamage)
 					and not J.IsTormentor(creep)
 					and not J.IsRoshan(creep)
+					and J.IsDeniableLaneCreep(creep)
 					then
 						local togetherDamage = 0;
 						local togetherCount = 0;
@@ -744,6 +745,7 @@ function X.CarryFindTarget()
 				and not X.IsOthersTarget(creep)
 				and not J.IsTormentor(creep)
 				and not J.IsRoshan(creep)
+				and J.IsDeniableLaneCreep(creep)
 				then
 					return creep,BOT_MODE_DESIRE_ABSOLUTE;
 				end
@@ -1001,6 +1003,7 @@ function X.GetNearbyLastHitCreep(ignorAlly, bEnemy, nDamage, nRadius, bot)
 	do
 		if X.CanBeAttacked(nCreep) and nCreep:GetHealth() < ( nDamage + 256 )
 		and ( ignorAlly or not X.IsAllysTarget(nCreep) )
+		and ( bEnemy or J.IsDeniableLaneCreep(nCreep) )
 		then
 		
 			local nAttackProDelayTime = J.GetAttackProDelayTime(bot,nCreep) ;
@@ -1495,7 +1498,9 @@ function ItemOpsDesire()
                         end
                     end
                     local nDropOwner = droppedItem.owner
-                    if nDropOwner ~= nil and nDropOwner == bot and not string.find(itemName, 'token') then
+                    -- lotuses past 30 min are dropped on purpose (item_purchase_generic)
+                    if nDropOwner ~= nil and nDropOwner == bot and not string.find(itemName, 'token')
+                    and itemName ~= 'item_famango' and itemName ~= 'item_great_famango' then
                         PickedItem = droppedItem
                     end
                     if PickedItem ~= nil and GetItemCost(itemName) > minPickItemCost then

@@ -1565,7 +1565,7 @@ function ConsiderGeneralRoamingInConditions()
 			bot:Action_AttackUnit(nInCloseRangeAlly[2], true)
 		else
 			local allyCreeps = bot:GetNearbyCreeps(1000, false)
-			if #allyCreeps >= 1 and J.IsValid(allyCreeps[1]) then
+			if #allyCreeps >= 1 and J.IsValid(allyCreeps[1]) and J.IsDeniableLaneCreep(allyCreeps[1]) then
 				bot:Action_AttackUnit(allyCreeps[1], true)
 			end
 		end

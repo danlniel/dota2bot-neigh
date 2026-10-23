@@ -60,7 +60,7 @@ end
 -- One-time load announce: proves THIS copy of the scripts is what the game
 -- loaded, and the printed table address shows whether bots share a team VM
 -- (one identical line per team) or run isolated (one distinct line per bot).
-IQDebug('FightIQ lib loaded (build 2026-08-19), vm='..tostring(J))
+IQDebug('FightIQ lib loaded (build 2026-10-23), vm='..tostring(J))
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )
@@ -3542,6 +3542,61 @@ function J.GetLongRangeLockTarget(bot, nCastRange)
 	return nil
 end
 
+-- Deny targets must be real lane creeps: allied-creep queries also return
+-- summons like Tidehunter's Leviathan's Catch fish, which bots kept
+-- "denying" (upstream PR #163). Siege creeps are npc_dota_*_siege, not
+-- npc_dota_creep_*, so they're allowed explicitly.
+function J.IsDeniableLaneCreep(creep)
+	local sName = creep:GetUnitName()
+	return string.find(sName, 'npc_dota_creep_') ~= nil
+		or string.find(sName, '_siege') ~= nil
+end
+
+-- Right-click carry to lock down right now, independent of the focus call.
+-- GetLongRangeLockTarget only fires on the team focus target, and Battle
+-- Trance scores -1 in J.ScoreEnemyTarget (damage can't kill him), so a
+-- trancing Troll was never anyone's target: bots held hex/disarm through
+-- exactly the window they exist for. sKind gates what still works:
+--   'silence' before the trance only (it stops the cast, not the swings),
+--   'hex' / 'disarm' while he's swinging, 'pierce' through BKB (Abyssal).
+function J.GetRightclickMenaceLock(bot, nCastRange, sKind)
+	local iq = J.Customize and J.Customize.ItemIQ
+	if iq == nil or iq.Enable == false or iq.Anti_Rightclick == false then return nil end
+	local best, bestScore = nil, -1
+	for _, enemy in pairs(J.GetNearbyHeroes(bot, math.min(nCastRange, 1600), true, BOT_MODE_NONE)) do
+		if J.IsValidHero(enemy)
+		and J.tRightclickMenace[enemy:GetUnitName()]
+		and not J.IsSuspiciousIllusion(enemy)
+		and not enemy:IsHexed()
+		and not enemy:IsStunned()
+		and not enemy:IsInvulnerable()
+		then
+			local bTrance = enemy:HasModifier('modifier_troll_warlord_battle_trance')
+			local hVictim = enemy:GetAttackTarget()
+			local bHittingHero = hVictim ~= nil and hVictim:IsHero() and hVictim:GetTeam() == bot:GetTeam()
+			local bEngaged = bTrance or bHittingHero
+				or bot:WasRecentlyDamagedByHero(enemy, 2.0)
+				or J.IsInTeamFight(bot, 1200)
+			local bUsable = false
+			if sKind == 'silence' then
+				bUsable = not bTrance and not enemy:IsSilenced() and not enemy:IsMagicImmune()
+			elseif sKind == 'hex' then
+				bUsable = not enemy:IsMagicImmune()
+			elseif sKind == 'disarm' then
+				bUsable = hVictim ~= nil and not enemy:IsDisarmed() and not enemy:IsMagicImmune()
+			elseif sKind == 'pierce' then
+				bUsable = true
+			end
+			if bEngaged and bUsable then
+				local score = (bTrance and 3 or 0) + (bHittingHero and 2 or 0)
+					+ (1 - GetUnitToUnitDistance(bot, enemy) / nCastRange)
+				if score > bestScore then best, bestScore = enemy, score end
+			end
+		end
+	end
+	return best
+end
+
 local TOWER_ID_LIST = {
 	TOWER_TOP_1, TOWER_TOP_2, TOWER_TOP_3,
 	TOWER_MID_1, TOWER_MID_2, TOWER_MID_3,
@@ -5225,6 +5280,17 @@ function J.WeAreStronger(bot, nRadius)
 		if ok and type(fFogPressure) == 'number' then
 			enemyPower = enemyPower + fFogPressure
 		end
+	end
+
+	-- enemy towers count against us exactly like ours count for us above —
+	-- the one-sided version made fights under enemy towers look winnable
+	-- (upstream PR #154). Added after fog pressure, which estimates from
+	-- hero power only.
+	local nEnemyTowers = bot:GetNearbyTowers(600, true)
+	if J.IsValidBuilding(nEnemyTowers[1]) then
+		local fGlyph = nEnemyTowers[1]:HasModifier('modifier_fountain_glyph') and 2 or 1
+		enemyPower = enemyPower + #nEnemyTowers
+			* (math.sqrt(Max(0, nEnemyTowers[1]:GetAttackDamage() * nEnemyTowers[1]:GetAttackSpeed() * 5.0 * fGlyph)))
 	end
 
 	local fCommitMargin = (iq and iq.Commit_Margin) or 1.0

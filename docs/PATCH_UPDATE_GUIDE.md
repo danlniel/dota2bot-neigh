@@ -2,7 +2,10 @@
 
 This is a step-by-step runbook for quickly updating the bot scripts when Valve releases a new Dota 2 patch. Designed to be followed by a developer or AI assistant without needing to re-read the entire codebase.
 
-**Last updated for:** Patch 7.41a (March 2026)
+**Last updated for:** Patch 7.41f (September 2026). 7.41b–7.41f were audited together on 2026-10-23
+by diffing d2vpkr game files (7.41a release → master), not just the patch notes. That caught
+unannounced changes. Code changes: Invoker point-indexed skill list, Witchbane range, Tusk
+root check, Meepo talent. Everything else was number-only.
 
 ---
 
@@ -273,6 +276,14 @@ Example from 7.41: OD's Essence Flux → innate, new Objurgation ability added.
 Some heroes have non-standard skill progression (Meepo, Invoker). Check if ult level requirements changed.
 
 Example: Meepo Divided We Stand levels changed from 3 to 4 max levels.
+
+Example (7.41b): Invoker gained extra ability POINTS at levels 6/12/18. The level-up
+consumer (`AbilityLevelUpComplement`) spends `sSkillList` in order whenever points are
+available, so a per-level list hits talent entries before they unlock and stalls. Invoker's
+list in `aba_skill.lua` is now indexed by point number (`tTalentAtPoint`). If the point
+schedule changes again, update that map and re-simulate. Also check whether a hero's
+talent swap changes what an `{x,y}` talent-tree entry picks: `x == 0` takes the FIRST
+talent of that tier in slot order, anything else takes the second.
 
 ### 3H. Handle Targeting Changes (generic)
 

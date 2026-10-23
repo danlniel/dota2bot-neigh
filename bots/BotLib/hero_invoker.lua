@@ -11,7 +11,9 @@ local sRole = J.Item.GetRoleItemsBuyList( bot )
 local tTalentTreeList = {
 {--冰雷
     ['t25'] = {10, 0},
-    ['t20'] = {10, 0},
+    -- 7.41b replaced +1 Orb Levels (right) with Forged Spirit armor
+    -- reduction; take +Chaos Meteors (left) instead
+    ['t20'] = {0, 10},
     ['t15'] = {10, 0},
     ['t10'] = {10, 0}},
 {--冰火
@@ -20,9 +22,11 @@ local tTalentTreeList = {
     ['t15'] = {10, 0},
     ['t10'] = {10, 0}}}
 
+-- 8 levels per orb: 7.41b's extra ability points (levels 6/12/18) fund the
+-- 8th level the removed +1 Orb Levels talent used to give
 local tAllAbilityBuildList = {
-						{2,1,2,1,3,1,2,1,2,2,3,3,3,3,3,3,2,2,1,1,1}, --冰雷核
-                        {3,1,3,1,2,3,3,1,1,3,2,3,2,3,2,2,2,2,1,1,1} --冰火核
+						{2,1,2,1,3,1,2,1,2,2,3,3,3,3,3,3,2,2,1,1,1,2,1,3}, --冰雷核
+                        {3,1,3,1,2,3,1,3,1,3,2,3,2,3,2,2,2,2,1,1,1,3,1,2} --冰火核
                         -- {1,2,2,3,2,1,2,1,2,1,2,1,2,1,1,3,3,3,3,3,3},--冰雷辅助
 }
 

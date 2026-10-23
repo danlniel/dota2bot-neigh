@@ -10,7 +10,7 @@ local sRole = J.Item.GetRoleItemsBuyList( bot )
 local tTalentTreeList = {
 						['t25'] = {10, 0},
 						['t20'] = {0, 10},
-						['t15'] = {0, 10},
+						['t15'] = {10, 0}, -- +Poof Damage moved here in 7.41b
 						['t10'] = {10, 0},
 }
 
