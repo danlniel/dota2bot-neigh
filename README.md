@@ -12,7 +12,7 @@
 
 ## What Makes This Different
 
-- **127 heroes supported** on Patch 7.41/7.41a - including Largo, Kez, Ringmaster, Invoker, Techies, Meepo, Lone Druid, and more
+- **127 heroes supported** on Patch 7.41f - including Largo, Kez, Ringmaster, Invoker, Techies, Meepo, Lone Druid, and more
 - **Bots actually play the game** - they lane, gank, push towers, defend, farm jungle, take Roshan, and use active items
 - **Dynamic difficulty (FretBots mode)** - bots get unfair bonuses that scale with difficulty for a real challenge
 - **Bots communicate** - they announce pushes, defends, Roshan, and respond to your pings with "On my way!" (in 4 languages)

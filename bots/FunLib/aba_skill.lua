@@ -209,37 +209,21 @@ function X.GetSkillList( sAbilityList, nAbilityBuildList, sTalentList, nTalentBu
 	end
 	if botName == 'npc_dota_hero_invoker'
 	then
-		sSkillList = {
-						[1] = sAbilityList[nAbilityBuildList[1]],
-						[2] = sAbilityList[nAbilityBuildList[2]],
-						[3] = sAbilityList[nAbilityBuildList[3]],
-						[4] = sAbilityList[nAbilityBuildList[4]],
-						[5] = sAbilityList[nAbilityBuildList[5]],
-						[6] = sAbilityList[nAbilityBuildList[6]],
-						[7] = sAbilityList[nAbilityBuildList[7]],
-						[8] = sAbilityList[nAbilityBuildList[8]],
-						[9] = sAbilityList[nAbilityBuildList[9]],
-						[10] = sTalentList[nTalentBuildList[1]],
-						[11] = sAbilityList[nAbilityBuildList[10]],
-						[12] = sAbilityList[nAbilityBuildList[11]],
-						[13] = sAbilityList[nAbilityBuildList[12]],
-						[14] = sAbilityList[nAbilityBuildList[13]],
-						[15] = sTalentList[nTalentBuildList[2]],
-						[16] = sAbilityList[nAbilityBuildList[14]],
-						[17] = sAbilityList[nAbilityBuildList[15]],
-						[18] = sAbilityList[nAbilityBuildList[16]],
-						[19] = sAbilityList[nAbilityBuildList[17]],
-						[20] = sTalentList[nTalentBuildList[3]],
-						[21] = sAbilityList[nAbilityBuildList[18]],
-						[22] = sAbilityList[nAbilityBuildList[19]],
-						[23] = sAbilityList[nAbilityBuildList[20]],
-						[24] = sAbilityList[nAbilityBuildList[21]],
-						[25] = sTalentList[nTalentBuildList[4]],
-						[26] = sTalentList[nTalentBuildList[5]],
-						[27] = sTalentList[nTalentBuildList[6]],
-						[28] = sTalentList[nTalentBuildList[7]],
-						[29] = sTalentList[nTalentBuildList[8]],
-					}
+		-- Indexed by ability POINT, not hero level: since 7.41b Invoker gets
+		-- an extra point at levels 6/12/18, so the level 10/15/20/25 talents
+		-- are his 11th/17th/23rd/28th points. The old per-level list hit each
+		-- talent a level early and sat on unspent points until it unlocked.
+		local tTalentAtPoint = { [11] = 1, [17] = 2, [23] = 3, [28] = 4, [29] = 5, [30] = 6, [31] = 7, [32] = 8 }
+		sSkillList = {}
+		local nAbility = 1
+		for nPoint = 1, #nAbilityBuildList + 8 do
+			if tTalentAtPoint[nPoint] then
+				sSkillList[nPoint] = sTalentList[nTalentBuildList[tTalentAtPoint[nPoint]]]
+			else
+				sSkillList[nPoint] = sAbilityList[nAbilityBuildList[nAbility]]
+				nAbility = nAbility + 1
+			end
+		end
 	end
 
 	-- print("Aba list for: "..botName)

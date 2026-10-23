@@ -6574,7 +6574,7 @@ end
 --行巫之祸
 X.ConsiderItemDesire["item_heavy_blade"] = function( hItem )
 
-	local nCastRange = 500
+	local nCastRange = hItem:GetCastRange() + aetherRange -- 700 since 7.41d
 	local sCastType = 'unit'
 	local hEffectTarget = nil
 	local sCastMotive = nil
