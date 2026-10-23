@@ -148,6 +148,19 @@ Menace list: `J.tRightclickMenace` in `jmz_func.lua`.
 - On the gaming PC, run `deploy/deploy-to-dota.bat` **as administrator**. It does
   a `git pull --ff-only` and then robocopies `bots/` into the Dota vscripts
   folder. **Changes reach the game only after they're pushed to origin.**
+- **The server requires the API key.** Without it, `/director` answers 401, and
+  FretBots prints `[MLDirector] disabled: server rejected the API key`.
+  - The deploy script asks for the key once and saves it to
+    `deploy\ml_api_key.txt` (gitignored). It injects the key into the
+    **deployed** `general.lua` after every mirror.
+  - The repo's `Api_Key` stays `''`. Never commit the key, and never edit
+    `general.lua` in the Windows clone: a dirty file breaks
+    `git pull --ff-only`, and the script then deploys stale files.
+  - To get the key: `ssh orangepi@192.168.18.200 'grep ML_API_KEY /home/orangepi/dota2bot-ml/.env'`.
+  - A `vscripts\game\Customize\general.lua` override replaces the whole
+    config, key included. The script warns when it finds one.
+  - The first deploy after a script change has to run twice. PowerShell runs
+    the version it already loaded, and only the second run uses the pulled one.
 - **First check in any game log:**
   - `[IQ] FightIQ lib loaded (build YYYY-MM-DD)` must show the expected build.
   - The FretBots banner should end in `[neigh fork YYYY-MM-DD]`.
