@@ -240,6 +240,11 @@ Customize.LaneIQ = {
     -- enemy tower. Only affects idle positioning (never last-hit/deny).
     Freeze_When_Ahead = true,
     Freeze_Pullback = 250,   -- extra units to hold back when freezing
+    -- Pos 4/5 deny first and leave last hits to the cores. They still take
+    -- any creep no allied core (human or bot) is within this many units of,
+    -- so creeps aren't wasted while the core is dead, backing or elsewhere.
+    Support_Deny_Focus = true,
+    Support_Core_Claim_Radius = 800,
 }
 
 -- Draft IQ: on top of the existing counter-pick/synergy scoring, reward
