@@ -5,7 +5,7 @@ learned the expensive way, and how to verify anything. Upstream docs
 (`ARCHITECTURE.md`, `PATCH_UPDATE_GUIDE.md`, `BOT_API_REFERENCE.md`) still
 describe the base codebase; this file covers only what's different here.
 
-**Last updated:** 2026-10-23
+**Last updated:** 2026-10-30
 
 ---
 
@@ -87,9 +87,10 @@ and default to on. `Debug = true` (FightIQ) prints `[IQ] …` lines to the conso
 | **FightIQ** | Commit margin (fight only when power ≥ 1.10× enemy), ult-ready bonus, fog awareness, focus fire, deterministic team focus and hunt calls, smoke ganks, deep-solo avoidance, buyback awareness, anti long-range (don't tank Sniper, focus backliners), power-spike windows, channeler priority | `FunLib/jmz_func.lua`, `FunLib/team_focus.lua`, `mode_*_generic.lua` |
 | **ItemIQ** | Reactive items: Blade Mail (durable cores) / Ghost (supports) vs physical, Cloak/BKB vs magic and disables, Pipe/Glimmer when behind, Force/Pike vs kiters, proactive Pike/Force vs a drafted Sniper/Drow/Clinkz, **anti right-click carry** (below) | `item_purchase_generic.lua` (`ReactiveItemPurchase`), `FunLib/reactive_buy.lua` |
 | **FarmIQ** | Stacking, multi-camp support stacking, lane fallback, `IsCampDangerous` fix | farm mode files |
-| **LaneIQ** | Freeze the lane when ahead | laning mode |
+| **LaneIQ** | Freeze the lane when ahead. **Support deny focus:** pos 4/5 deny first, then take only last hits no allied core is within 800 of (core dead, backing, other side of the wave), then cheap harass (≤1 enemy creep near, no tower). Their laning `Think()` is replaced at load, because Lua can't call Valve's default | `mode_laning_generic.lua` (+ `override_generic/` copy), `Customize.LaneIQ.Support_*` |
 | **DraftIQ** | Comp completeness. Bots wait up to 40 s for human picks (55 s deadline, assumes the lobby timer is longer). Post-pick counter swap | `hero_selection.lua`, `FretBots/CounterSwap.lua` |
-| **ML director** | Adaptive difficulty. Starts at 5, steered by kill + networth gap, one step per 90 s, 4 min grace | `FretBots.lua` → server `/director` |
+| **ML director** | Adaptive difficulty. Starts at 5, steered by kill + networth gap, one step per 60 s, 4 min grace. Every directive carries a `reason`; chat shows connect/outage/401, each change with its reason, and a status line every `ML.Status_Interval` (180 s). Falls back to `Server_Fallback` (LAN) after 3 failures, retries every 60 s when both are down (it used to switch off for the whole game) | `FretBots.lua` → server `/director` |
+| **Ward stock** | Keeps every team with a bot at ≥2 observer and sentry stock (the buy logic needs stock > 1). Dust has no stock limit in 7.41 | `FretBots/WardStock.lua` |
 | **Comeback rubber-band** | A losing bot team's economy stops collapsing (1→2× at a 30% networth deficit) | `FretBots/GameState.lua` (`GetComebackBoost`), `Settings.comeback` |
 | **Sniper handicap** | House rule: −12% base damage, −100 range, applied to human and bot alike | `FretBots/HeroHandicap.lua` |
 | **Special counters** | Warlock golem fight-or-flee, invis counters vs late Sand King/Riki | `jmz_func.lua`, `FunLib/aba_special_units.lua` |
@@ -136,8 +137,16 @@ Menace list: `J.tRightclickMenace` in `jmz_func.lua`.
   ssh orangepi@192.168.18.200 'docker ps --filter name=dota2bot-ml; ls -la /home/orangepi/dota2bot-ml/data'
   ```
   A new `session-YYYYMMDD.jsonl` appears for every day a game called the
-  director. If you played but no file appeared, FretBots didn't run or
-  couldn't reach the server. That's also a sign of a stale deploy.
+  director (before 2026-10-30 the name was fixed at container start, so
+  games landed in a file named after the restart date). If you played but no
+  file appeared, FretBots didn't run or couldn't reach the server. That's
+  also a sign of a stale deploy.
+- `docker logs dota2bot-ml` shows `[director] <client> new game seen`,
+  every difficulty change with its reason, and `[auth] rejected … no key /
+  wrong key`. A game whose deploy is missing the key now leaves a trace.
+- **Updating the server:** `scp ml/server.py orangepi@192.168.18.200:/home/orangepi/dota2bot-ml/`
+  then `ssh orangepi@192.168.18.200 'cd /home/orangepi/dota2bot-ml && docker compose up -d --build'`.
+  The image copies `server.py` at build time, so a restart alone isn't enough.
 - Model is still `heuristic`. There isn't enough game data to train one.
   Details are in `ml/README.md` and `ml/DEPLOYMENT.md`.
 
@@ -168,6 +177,11 @@ Menace list: `J.tRightclickMenace` in `jmz_func.lua`.
     on 2026-08-20.
   - **Bump both dates when shipping behavior changes**: `jmz_func.lua` (the
     `IQDebug` load line) and `FretBots.lua`.
+- **In-game chat:** `[Director] connected to …` within ~10 s of the horn
+  means the director works. `[Director] OFF: the server rejected the API
+  key` means the deploy is missing the key. `[Director] server unreachable`
+  means both URLs failed; it keeps retrying. No `[Director]` line at all
+  means FretBots never started or the scripts are stale.
 - Useful `[IQ]` lines: `queued counter item_orchid (pos2)`,
   `backpack -> main: …`, `reactive buy … result=`, focus/hunt/smoke calls,
   kite detections.
@@ -181,7 +195,7 @@ Menace list: `J.tRightclickMenace` in `jmz_func.lua`.
   LuaJIT. Run from the repo root:
   ```bash
   for t in tests/*.lua; do luajit "$t"; done
-  python3 tests/test_server_report.py
+  for t in tests/test_server_*.py; do python3 "$t"; done
   ```
 - Glue code that touches the engine can only be syntax-checked
   (`luajit -bl`) and checked for global leaks
@@ -218,6 +232,13 @@ and closed #168.
 - **Ward counting (#168):** `Item.GetWardCharges` handles the merged
   `item_ward_dispenser`. That bug went live once pos 5 started buying sentries.
 - **Enemy towers (#154):** they now count in `J.WeAreStronger`.
+- **Support deny priority (#174, 2026-10-30):** supports deny first and
+  leave last hits to cores. We kept our `J.IsDeniableLaneCreep` filter
+  (#174's deny helper drops it) and made the "core is here" check per creep
+  instead of per support, so supports still farm creeps nobody else can reach.
+  #174's Invoker change (skip Aghanim's Scepter and Shard, claimed inert in
+  7.41 until an upgrade is picked manually) is **not** taken. Verify it in
+  game files before copying it.
 
 **Skipped, don't re-evaluate without a new reason:**
 - **#166 `mode_attack_generic` rewrite:** it fights FightIQ's kite-disengage

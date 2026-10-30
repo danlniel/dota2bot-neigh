@@ -8,7 +8,7 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 local Version = require 'bots.FunLib.version'
 -- Print version to console. The [neigh fork] marker proves THIS file is the
 -- one loading (and not a subscribed workshop copy resolving instead).
-print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork 2026-10-23]')
+print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork 2026-10-30]')
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
