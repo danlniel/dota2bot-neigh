@@ -63,7 +63,7 @@ end
 -- Bump on every behavior change (with FORK_BUILD in FretBots.lua). Also shown
 -- in the bots' first chat line, so chat tells local dev scripts (this fork)
 -- from the workshop copy.
-J.FORK_BUILD = '2026-10-30'
+J.FORK_BUILD = '2026-10-30b'
 IQDebug('FightIQ lib loaded (build '..J.FORK_BUILD..'), vm='..tostring(J))
 
 

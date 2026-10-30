@@ -39,21 +39,39 @@ Write-Host "target: $target"
 # ML server API key. Never put it in general.lua by hand: the game copy is
 # overwritten by the mirror below, and an edited repo copy makes the next
 # `git pull` fail (= silently stale deploy). It lives in
-# deploy\ml_api_key.txt (gitignored), asked for once, and is injected into
-# the DEPLOYED general.lua after every copy.
+# deploy\ml_api_key.txt (gitignored) and is injected into the DEPLOYED
+# general.lua after every copy. First run: taken from the game's current
+# general.lua if a key is already there, otherwise asked for once.
 $keyFile = Join-Path $PSScriptRoot "ml_api_key.txt"
-if ($ApiKey) {
-    Set-Content -Path $keyFile -Value $ApiKey.Trim() -NoNewline
-} elseif (Test-Path $keyFile) {
+$keySource = "-ApiKey"
+if (-not $ApiKey -and (Test-Path $keyFile)) {
     $ApiKey = "$(Get-Content -Path $keyFile -Raw)".Trim()  # empty file -> ""
-} else {
+    $keySource = $keyFile
+}
+if (-not $ApiKey) {
+    # No saved key yet: keep the one already in the game's general.lua (pasted
+    # by hand, or injected by an earlier deploy). The mirror below would
+    # otherwise overwrite it with the repo's empty key.
+    $deployedGeneral = Join-Path $target "Customize\general.lua"
+    if (Test-Path $deployedGeneral) {
+        $found = [regex]::Match([System.IO.File]::ReadAllText($deployedGeneral), "Api_Key\s*=\s*'([^']+)'")
+        if ($found.Success -and $found.Groups[1].Value -notmatch 'PASTE') {
+            $ApiKey = $found.Groups[1].Value.Trim()
+            $keySource = "the game's general.lua"
+            Write-Host "ML API key: kept the key already in the game's general.lua"
+        }
+    }
+}
+if (-not $ApiKey) {
     $ApiKey = "$(Read-Host 'ML server API key (Enter to skip - adaptive difficulty stays off)')".Trim()
-    if ($ApiKey) { Set-Content -Path $keyFile -Value $ApiKey -NoNewline }
+    $keySource = "the prompt"
 }
 $ApiKey = $ApiKey.Trim()
 if ($ApiKey -and $ApiKey -notmatch '^[A-Za-z0-9_.-]+$') {
-    throw "API key in $keyFile has unexpected characters - fix or delete that file and re-run"
+    throw "API key from $keySource has unexpected characters - fix it (or delete $keyFile) and re-run"
 }
+# saved once, reused by every later deploy without asking
+if ($ApiKey) { Set-Content -Path $keyFile -Value $ApiKey -NoNewline }
 if (Test-Path (Join-Path $RepoRoot ".git")) {
     git -C $RepoRoot pull --ff-only
     if ($LASTEXITCODE -ne 0) { Write-Warning "git pull failed; deploying the files already on disk" }

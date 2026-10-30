@@ -87,8 +87,8 @@ Everything you can tune is in this ONE file:
 ```lua
 -- Bot difficulty 0-10 (stat/gold bonuses, FretBots)
 Customize.Fretbots = {
-    Default_Difficulty = 10,      -- used if nobody votes in chat
-    Allow_To_Vote = true,         -- type a number 0-10 in chat at game start to vote
+    Default_Difficulty = 5,       -- starting point; the ML director adapts it
+    Allow_To_Vote = false,        -- true = chat vote (0-10) picks the starting point
     ...
 }
 

@@ -30,7 +30,7 @@ if GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
 	return
 end
 -- Bump on every behavior change (with J.FORK_BUILD in FunLib/jmz_func.lua)
-local FORK_BUILD = '2026-10-30'
+local FORK_BUILD = '2026-10-30b'
 -- A second run (key pressed twice) must not start a second director or
 -- re-register listeners. A plain global survives the re-run even if the
 -- engine reloads modules (Flags.lua resets its flags when re-executed).
