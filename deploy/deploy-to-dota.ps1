@@ -1,8 +1,10 @@
 # Deploy the repo's bots/ folder into the local Dota 2 install.
-# Usage: .\deploy-to-dota.ps1 [-DotaPath "D:\Games\Steam\steamapps\common\dota 2 beta"] [-ApiKey "<key>"]
+# Usage: .\deploy-to-dota.ps1 [-DotaPath "D:\Games\Steam\steamapps\common\dota 2 beta"] [-ApiKey "<key>"] [-StartKey F11|none]
 param(
     [string]$DotaPath = "",
-    [string]$ApiKey = ""
+    [string]$ApiKey = "",
+    # key that starts FretBots in game ("none" = console alias only)
+    [string]$StartKey = "F11"
 )
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -87,6 +89,47 @@ if ($ApiKey) {
 $override = Join-Path $DotaPath "game\dota\scripts\vscripts\game\Customize\general.lua"
 if (Test-Path $override) {
     Write-Warning "$override exists and OVERRIDES the deployed settings (including the API key). Rename or delete it unless you maintain it on purpose."
+}
+# One-key FretBots start. A normal lobby has no hook that runs server Lua
+# by itself, and bot scripts can't run console commands, so the closest to
+# automatic is one key: neigh_bots.cfg (ours, rewritten every deploy) defines
+# the alias and the bind, and autoexec.cfg gets one line that loads it.
+$cfgDir = Join-Path $DotaPath "game\dota\cfg"
+if (Test-Path $cfgDir) {
+    $startCmd = "sv_cheats 1; script_reload_code bots/fretbots"
+    $cfgLines = @(
+        "// Written by deploy-to-dota.ps1 (dota2bot-neigh); rewritten on every deploy.",
+        "// Start FretBots (bonuses, adaptive director, chat lines) once you're in",
+        "// the lobby: loading screen and hero selection both work. Console: neigh",
+        "alias neigh `"$startCmd`""
+    )
+    if ($StartKey -and $StartKey -ne "none") {
+        if ($StartKey -notmatch '^[A-Za-z0-9_]+$') { throw "-StartKey '$StartKey' is not a key name (e.g. F11)" }
+        $cfgLines += "bind `"$StartKey`" `"neigh`""
+    }
+    [System.IO.File]::WriteAllText((Join-Path $cfgDir "neigh_bots.cfg"), (($cfgLines -join "`r`n") + "`r`n"))
+    $autoexec = Join-Path $cfgDir "autoexec.cfg"
+    $existing = if (Test-Path $autoexec) { [System.IO.File]::ReadAllText($autoexec) } else { "" }
+    if ($existing -notmatch '(?m)^\s*exec\s+neigh_bots') {
+        $sep = if ($existing -and -not $existing.EndsWith("`n")) { "`r`n" } else { "" }
+        [System.IO.File]::WriteAllText($autoexec, $existing + $sep + "exec neigh_bots`r`n")
+        Write-Host "autoexec.cfg: added 'exec neigh_bots'"
+    }
+    if ($StartKey -and $StartKey -ne "none") {
+        Write-Host "in game: press $StartKey to start FretBots (or type 'neigh' in the console). Restart Dota once so autoexec loads it."
+    } else {
+        Write-Host "in game: type 'neigh' in the console to start FretBots. Restart Dota once so autoexec loads it."
+    }
+} else {
+    Write-Warning "$cfgDir not found - skipped the FretBots start key; type the command by hand: sv_cheats 1; script_reload_code bots/fretbots"
+}
+
+# Subscribed to the upstream workshop item? Then the lobby's bot-script
+# dropdown decides which copy runs. "Open Hyper AI" = workshop (upstream, none
+# of this fork's changes); "Local Dev Script" = what this script just deployed.
+$workshopItem = Join-Path (Split-Path (Split-Path $DotaPath)) "workshop\content\570\3246316298"
+if (Test-Path $workshopItem) {
+    Write-Warning "you're subscribed to the Open Hyper AI workshop item. In the lobby, set BOTH teams' bot script to 'Local Dev Script'. 'Open Hyper AI' runs the workshop copy, which has none of this fork's changes. Bots' first chat line shows '[neigh build ...]' when it's right."
 }
 Write-Host "deployed commit $commit"
 Write-Host "in-game check: console prints '[IQ] FightIQ lib loaded (build ...)'"

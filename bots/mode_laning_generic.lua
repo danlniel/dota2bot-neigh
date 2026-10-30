@@ -21,6 +21,19 @@ local attackDamage = bot:GetAttackDamage()
 local nH, enemyBots = J.Utils.NumHumanBotPlayersInTeam(GetOpposingTeam())
 local teamHumans, teamBots = J.Utils.NumHumanBotPlayersInTeam(GetTeam())
 
+-- LaneIQ support farm: pos 4/5 deny instead of competing with their core for
+-- last hits (adapted from upstream PR #174). Think() can only be replaced at
+-- load (there's no way to call Valve's default from Lua), so the role is read
+-- once here; Think re-checks it every frame.
+local laneIQ = Customize.LaneIQ
+local bSupportDenyFocus = (laneIQ == nil or laneIQ.Support_Deny_Focus ~= false)
+local nCoreClaimRadius = laneIQ and laneIQ.Support_Core_Claim_Radius or 800
+local bLoadedAsSupport = bSupportDenyFocus and J.GetPosition(bot) >= 4
+
+local function IsSupportDenyRole()
+	return bSupportDenyFocus and J.GetPosition(bot) >= 4
+end
+
 -- Announcer state
 local hasPickedOneAnnouncer      = false
 local lastAnnouncePrintedTime    = 0
@@ -165,25 +178,115 @@ function GetBestLastHitCreep(hCreepList)
 end
 
 function GetBestDenyCreep(hCreepList)
+	-- in reach first; a creep a few steps away is still worth walking to
+	local fallbackCreep = nil
 	for _, creep in pairs(hCreepList)
 	do
 		if J.IsValid(creep)
 		and J.GetHP(creep) < 0.49
 		and J.CanBeAttacked(creep)
-		and creep:GetHealth() <= attackDamage
 		and J.IsDeniableLaneCreep(creep)
+		and (creep:GetHealth() <= attackDamage
+			or J.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, J.GetAttackProDelayTime(bot, creep)))
 		then
-			return creep
+			if GetUnitToUnitDistance(bot, creep) <= botAttackRange + 100 then
+				return creep
+			end
+			if fallbackCreep == nil then fallbackCreep = creep end
 		end
 	end
 
+	return fallbackCreep
+end
+
+-- Alive allied cores (humans included) other than this bot, i.e. whoever
+-- a support should leave the last hits to.
+local function GetOtherAllyCores()
+	local cores = {}
+	for _, ally in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES)) do
+		if J.IsValidHero(ally)
+		and ally ~= bot
+		and not ally:IsIllusion()
+		and J.IsCore(ally)
+		then
+			table.insert(cores, ally)
+		end
+	end
+	return cores
+end
+
+-- Last hit a support may take without stealing: no core is close enough to
+-- the creep to take it. Keeps support GPM up when the core is dead, backing
+-- or on the far side of the wave, and the creep would be wasted otherwise.
+local function GetSupportLastHitCreep(hCreepList)
+	local cores = GetOtherAllyCores()
+	local free = {}
+	for _, creep in pairs(hCreepList) do
+		if J.IsValid(creep) then
+			local bClaimed = false
+			for _, core in pairs(cores) do
+				if GetUnitToUnitDistance(core, creep) <= nCoreClaimRadius then
+					bClaimed = true
+					break
+				end
+			end
+			if not bClaimed then table.insert(free, creep) end
+		end
+	end
+	return GetBestLastHitCreep(free)
+end
+
+-- Right-click the enemy laner when it's cheap: healthy, at most one enemy
+-- creep close enough to pull aggro, and nowhere near an enemy tower.
+local function GetSupportHarassTarget()
+	if J.GetHP(bot) <= 0.5 then return nil end
+	if #bot:GetNearbyLaneCreeps(600, true) > 1 then return nil end
+	if #bot:GetNearbyTowers(900, true) > 0 then return nil end
+	for _, enemy in pairs(nInRangeEnemy) do
+		if J.IsValidHero(enemy)
+		and J.CanBeAttacked(enemy)
+		and not J.IsSuspiciousIllusion(enemy)
+		and J.IsInRange(bot, enemy, botAttackRange + 100)
+		then
+			return enemy
+		end
+	end
 	return nil
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bLoadedAsSupport then
 	function Think()
+		if IsSupportDenyRole() then
+			-- Supports: deny first (XP + gold the enemy core loses), then
+			-- only the last hits no core can take, then cheap harass.
+			local denyCreep = GetBestDenyCreep(nAllyCreeps)
+			if J.IsValid(denyCreep) then
+				bot:SetTarget(denyCreep)
+				bot:Action_AttackUnit(denyCreep, true)
+				return
+			end
+
+			local freeCreep, moveToFree = GetSupportLastHitCreep(nEnemyCreeps)
+			if J.IsValid(freeCreep) then
+				if GetUnitToUnitDistance(bot, freeCreep) > botAttackRange
+				or (moveToFree and GetUnitToUnitDistance(bot, freeCreep) > botAttackRange * 0.8) then
+					bot:Action_MoveToUnit(freeCreep)
+				else
+					bot:SetTarget(freeCreep)
+					bot:Action_AttackUnit(freeCreep, true)
+				end
+				return
+			end
+
+			local harassTarget = GetSupportHarassTarget()
+			if harassTarget ~= nil then
+				bot:Action_AttackUnit(harassTarget, true)
+				return
+			end
+		end
+
 		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
-		if J.IsValid(hitCreep) then
+		if J.IsValid(hitCreep) and not IsSupportDenyRole() then
 			if J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
 			then
 				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
@@ -267,7 +370,7 @@ function AnnounceMessages()
 			local isFirstLine  = (numberAnnouncePrinted == 1)
 			if message then
 				-- Match original behavior: first line (or if no enemy bots) can be global
-				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number) or message, enemyBots == 0 or isFirstLine)
+				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number .. ' [neigh build ' .. tostring(J.FORK_BUILD) .. ']') or message, enemyBots == 0 or isFirstLine)
 			end
 			numberAnnouncePrinted   = numberAnnouncePrinted + 1
 			lastAnnouncePrintedTime = GameTime()

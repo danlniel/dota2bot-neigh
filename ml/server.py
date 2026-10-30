@@ -132,6 +132,8 @@ class Policy:
         """A game-clock reset on a client means its previous game finished."""
         last = self._last_game_time.get(client)
         self._last_game_time[client] = game_time
+        if last is None or game_time < last - 60:
+            print(f"[director] {client} new game seen at t={_clock(game_time)}")
         if last is not None and game_time < last - 60 and last > 300:
             self._games_done += 1
             print(f"[auto] game completed on {client} ({self._games_done}/{REPORT_EVERY} until report)")
@@ -171,11 +173,15 @@ class Policy:
         """Adaptive difficulty controller.
 
         Advantage of the human team over the enemy team, in "kill equivalents":
-            advantage = kill_gap + networth_gap / 1000
+            advantage = kill_gap + networth_gap / NW_KILL_EQUIV
         Steering: outside the deadband, move difficulty one step toward
         balance, at most once per cooldown window. Kills + networth together
         react faster and more fairly than kills alone (a farming human is
         "winning" before the kills show it).
+
+        Every directive carries a one-line `reason` written for the player:
+        FretBots prints it in chat on each change and as a periodic status
+        line, so the director's thinking is visible in game.
         """
         heroes = snapshot.get("heroes", {})
         side_kills = {"Radiant": 0, "Dire": 0}
@@ -192,40 +198,61 @@ class Policy:
         self._director_state[client] = {
             "Radiant": side_nw["Radiant"], "Dire": side_nw["Dire"], "ts": time.time(),
         }
-        self.note_game_boundary(client, snapshot.get("game_time", 0))
+        game_time = snapshot.get("game_time", 0)
+        self.note_game_boundary(client, game_time)
 
         difficulty = snapshot.get("difficulty", 5)
         directive = {"difficulty": difficulty, "announce": False}
         if human_side is None:  # bot-vs-bot game: nothing to balance for
+            directive["reason"] = "no human player in this game, nothing to balance"
             return directive
-        if snapshot.get("game_time", 0) < self.MIN_GAME_TIME:
-            return directive
-
-        now = time.time()
 
         enemy_side = "Dire" if human_side == "Radiant" else "Radiant"
         kill_gap = side_kills[human_side] - side_kills[enemy_side]
         nw_gap = side_nw[human_side] - side_nw[enemy_side]
         advantage = kill_gap + nw_gap / self.NW_KILL_EQUIV
+        score = (f"kills {side_kills[human_side]}-{side_kills[enemy_side]}, "
+                 f"networth {nw_gap / 1000:+.1f}k")
+        directive.update({"advantage": round(advantage, 2), "kill_gap": kill_gap, "nw_gap": nw_gap})
+
+        if game_time < self.MIN_GAME_TIME:
+            directive["reason"] = (f"watching the laning phase, no changes before "
+                                   f"{_clock(self.MIN_GAME_TIME)} ({score})")
+            return directive
+
+        now = time.time()
 
         # hysteresis: two consecutive readings must agree on direction before
         # any change (kills the flip-flopping a single noisy reading causes)
         direction = 1 if advantage >= self.DEADBAND else (-1 if advantage <= -self.DEADBAND else 0)
         prev_direction = self._last_direction.get(client, 0)
         self._last_direction[client] = direction
+        lead = f"your team {'leads' if direction == 1 else 'trails'} ({score}, advantage {advantage:+.1f})"
 
-        if now - self._last_adjust.get(client, 0) < self.ADJUST_COOLDOWN:
-            return directive
-
-        if direction == 1 and prev_direction == 1 and difficulty < 10:
-            directive["difficulty"] = difficulty + 1
-        elif direction == -1 and prev_direction == -1 and difficulty > 0:
-            directive["difficulty"] = difficulty - 1
-
-        if directive["difficulty"] != difficulty:
+        cooldown_left = self.ADJUST_COOLDOWN - (now - self._last_adjust.get(client, 0))
+        if direction == 0:
+            directive["reason"] = f"game is even ({score}, advantage {advantage:+.1f} within ±{self.DEADBAND:g})"
+        elif cooldown_left > 0:
+            directive["reason"] = f"{lead}; next change allowed in {int(cooldown_left) + 1}s"
+        elif direction != prev_direction:
+            directive["reason"] = f"{lead}; confirming on the next reading"
+        elif direction == 1 and difficulty >= 10:
+            directive["reason"] = f"{lead}; bots are already at max difficulty"
+        elif direction == -1 and difficulty <= 0:
+            directive["reason"] = f"{lead}; bots are already at min difficulty"
+        else:
+            directive["difficulty"] = difficulty + direction
             directive["announce"] = True
+            directive["reason"] = f"{lead}; bots {'get stronger' if direction == 1 else 'ease off'}"
             self._last_adjust[client] = now
+            print(f"[director] {client} t={_clock(game_time)} difficulty {difficulty:g} -> "
+                  f"{directive['difficulty']:g}: {directive['reason']}")
         return directive
+
+
+def _clock(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 START_TIME = time.time()
@@ -233,7 +260,12 @@ START_TIME = time.time()
 
 class Handler(BaseHTTPRequestHandler):
     policy = Policy()
-    log_path = os.path.join(DATA_DIR, f"session-{datetime.now():%Y%m%d}.jsonl")
+
+    @staticmethod
+    def log_path() -> str:
+        # per write, not per process: the container runs for weeks, and a
+        # path fixed at startup filed every game under the restart date
+        return os.path.join(DATA_DIR, f"session-{datetime.now():%Y%m%d}.jsonl")
 
     def do_GET(self):
         if self.path == "/health":
@@ -274,7 +306,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _log(self, endpoint: str, request_obj: dict, response_obj: dict):
         os.makedirs(DATA_DIR, exist_ok=True)
-        with open(self.log_path, "a") as f:
+        with open(self.log_path(), "a") as f:
             f.write(json.dumps({
                 "ts": time.time(),
                 "client": self.client_address[0],  # lets train.py separate concurrent games
@@ -298,6 +330,10 @@ class Handler(BaseHTTPRequestHandler):
         if API_KEY:
             supplied = self.headers.get("Authorization", "") or payload.get("api_key", "")
             if supplied != API_KEY:
+                # the game shows this in chat too, but a log line is the only
+                # server-side trace of a deploy that's missing the key
+                print(f"[auth] rejected {self.path} from {self.client_address[0]}: "
+                      f"{'no key' if not supplied else 'wrong key'}")
                 self._respond({"error": "unauthorized"}, 401)
                 return
         payload.pop("api_key", None)  # never write secrets into the dataset

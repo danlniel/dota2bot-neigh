@@ -105,15 +105,22 @@ function X.Think()
 		end
 	end
 
-	-- Last-hit with support suppression (reference: lane partner check)
+	local bSupport = not J.IsCore(bot)
+
+	-- Supports deny before anything else (upstream PR #174)
+	if bSupport then
+		local denyCreep = GetBestDenyCreep(nAllyCreeps)
+		if J.IsValid(denyCreep) then
+			bot:Action_AttackUnit(denyCreep, true)
+			return
+		end
+	end
+
+	-- Last-hit with support suppression: a support only farms when no core
+	-- (any lane, humans included) is around to take the creep
 	local hitCreep = GetBestLastHitCreep(nEnemyCreeps)
 	if J.IsValid(hitCreep) then
-		local nLanePartner = J.GetLanePartner(bot)
-		-- Support defers to core lane partner if partner is alive and nearby
-		if nLanePartner == nil
-		or J.IsCore(bot)
-		or (not J.IsCore(bot) and J.IsCore(nLanePartner)
-			and (not nLanePartner:IsAlive() or not J.IsInRange(bot, nLanePartner, 800)))
+		if not bSupport or not J.IsThereNonSelfCoreNearby(1000)
 		then
 			if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange then
 				bot:Action_MoveToUnit(hitCreep)

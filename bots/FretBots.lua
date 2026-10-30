@@ -1,5 +1,41 @@
-if not GameRules or GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
-	print('Start a lobby game and try to enable Fretbots after entering the Hero Selection phase.')
+if not GameRules then
+	print('Start a Local Host lobby first, then run: sv_cheats 1; script_reload_code bots/fretbots')
+	return
+end
+-- Started before hero selection (the F11 bind pressed on the loading screen,
+-- or typed too early): wait and start at hero selection. This used to print
+-- a console-only refusal, which looked exactly like FretBots being on.
+if GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
+	if not NeighFretBotsDeferred then
+		local ok, err = pcall(function()
+			GameRules:GetGameModeEntity():SetContextThink('NeighFretBotsDeferredStart', function()
+				if GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then return 1 end
+				NeighFretBotsDeferred = nil
+				if dofile == nil then
+					SendToServerConsole('script_reload_code bots/fretbots')
+					return nil
+				end
+				local okStart, errStart = pcall(dofile, 'bots/FretBots')
+				if not okStart then print('[FretBots] deferred start FAILED: '..tostring(errStart)) end
+				return nil
+			end, 1)
+		end)
+		if ok then
+			NeighFretBotsDeferred = true
+			print('[FretBots] started before hero selection: it will switch on when hero selection begins')
+		else
+			print('[FretBots] too early to start ('..tostring(err)..'). Run it again once hero selection begins.')
+		end
+	end
+	return
+end
+-- Bump on every behavior change (with J.FORK_BUILD in FunLib/jmz_func.lua)
+local FORK_BUILD = '2026-10-30'
+-- A second run (key pressed twice) must not start a second director or
+-- re-register listeners. A plain global survives the re-run even if the
+-- engine reloads modules (Flags.lua resets its flags when re-executed).
+if NeighFretBotsStarted then
+	GameRules:SendCustomMessage('FretBots is already running for this game [neigh fork ' .. FORK_BUILD .. '].', 0, 0)
 	return
 end
 -- LinkLuaModifier("modifier_fret_damage_increase", "FretBots/modifiers/modifier_seasonal_party_hat.lua", LUA_MODIFIER_MOTION_NONE)
@@ -8,7 +44,7 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 local Version = require 'bots.FunLib.version'
 -- Print version to console. The [neigh fork] marker proves THIS file is the
 -- one loading (and not a subscribed workshop copy resolving instead).
-print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork 2026-10-23]')
+print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork ' .. FORK_BUILD .. ']')
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
@@ -39,6 +75,7 @@ require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
 require 'bots.FretBots.HeroHandicap'
 require 'bots.FretBots.CounterSwap'
+require 'bots.FretBots.WardStock'
 
 -- =====================================================================
 -- ML Director (adaptive difficulty via model server, see ml/README.md)
@@ -57,30 +94,77 @@ do
 	end
 
 	local ML = mlCustomize.ML or {}
-	local SERVER_URL = ML.Server or 'http://127.0.0.1:5544'
 	local INTERVAL = ML.Director_Interval or 10
+	-- while every server is down, retry this often instead of giving up for
+	-- the whole game (one blip used to switch the director off for good)
+	local RETRY_INTERVAL = 60
+	-- chat status line every N game seconds between changes; 0 = changes only
+	local STATUS_INTERVAL = ML.Status_Interval or 180
 	local MAX_FAILURES = 3
 	local ALLOW_DIFFICULTY_CONTROL = ML.Allow_Difficulty_Control ~= false
+
+	-- primary (public URL), then the LAN fallback: tried in turn on failure
+	local servers = { ML.Server or 'http://127.0.0.1:5544' }
+	if ML.Server_Fallback ~= nil and ML.Server_Fallback ~= '' and ML.Server_Fallback ~= servers[1] then
+		table.insert(servers, ML.Server_Fallback)
+	end
+	local serverIndex = 1
 
 	MLDirector = MLDirector or {}
 	local isEnabled = ML.Enable ~= false
 	local failureCount = 0
+	local tickInterval = INTERVAL
+	local isOnline = false
+	local hasConnected = false
+	local isOutageAnnounced = false
+	local lastStatusTime = nil
 	local timerName = 'MLDirectorTimer'
-	local hasAnnouncedDisable = false
+
+	-- Director lines go to chat (and console), so the player can follow
+	-- what the server decides and why
+	local function Say(msg, msgType)
+		print('[MLDirector] '..msg)
+		Utilities:Print('[Director] '..msg, msgType or MSG_CONSOLE_GOOD)
+	end
 
 	local function Disable(reason)
 		isEnabled = false
-		if not hasAnnouncedDisable then
-			hasAnnouncedDisable = true
-			print('[MLDirector] disabled: '..tostring(reason)..' (static FretBots difficulty rules apply)')
-		end
+		Say(string.format('OFF: %s. Bot difficulty stays at %.1f.', tostring(reason), Settings and Settings.difficulty or 0), MSG_BAD)
 		Timers:RemoveTimer(timerName)
 	end
 
 	local function CountFailure(what)
 		failureCount = failureCount + 1
-		if failureCount >= MAX_FAILURES then
-			Disable(tostring(what)..' after '..MAX_FAILURES..' consecutive failures')
+		if failureCount % MAX_FAILURES ~= 0 then return end
+		-- MAX_FAILURES in a row on this server: try the next one
+		local failedUrl = servers[serverIndex]
+		serverIndex = serverIndex % #servers + 1
+		if #servers > 1 then
+			print('[MLDirector] '..failedUrl..' failing ('..tostring(what)..'), trying '..servers[serverIndex])
+		end
+		if failureCount >= MAX_FAILURES * #servers then
+			isOnline = false
+			tickInterval = RETRY_INTERVAL
+			if not isOutageAnnounced then
+				isOutageAnnounced = true
+				Say(string.format('server unreachable (%s). Retrying every %ds; bot difficulty stays at %.1f meanwhile.',
+					tostring(what), RETRY_INTERVAL, Settings.difficulty), MSG_BAD)
+			end
+		end
+	end
+
+	local function OnConnected()
+		failureCount = 0
+		tickInterval = INTERVAL
+		if isOnline then return end
+		isOnline = true
+		isOutageAnnounced = false
+		if hasConnected then
+			Say('server back online ('..servers[serverIndex]..').', MSG_GOOD)
+		else
+			hasConnected = true
+			Say(string.format('connected to %s. Bot difficulty starts at %.1f and adapts to keep the game close.',
+				servers[serverIndex], Settings.difficulty), MSG_GOOD)
 		end
 	end
 
@@ -96,36 +180,47 @@ do
 
 	local function ApplyDirective(resObj)
 		if type(resObj) ~= 'table' then return end
+		local reason = type(resObj.reason) == 'string' and resObj.reason or nil
+		local now = Utilities:GetTime()
 		if ALLOW_DIFFICULTY_CONTROL and type(resObj.difficulty) == 'number' then
+			local oldDifficulty = Settings.difficulty
 			local newDifficulty = math.max(0, math.min(10, resObj.difficulty))
-			if newDifficulty ~= Settings.difficulty then
+			if newDifficulty ~= oldDifficulty then
 				Settings.difficulty = newDifficulty
 				Settings.difficultyScale = Settings:CalculateDifficultyScale(newDifficulty)
-				if resObj.announce then
-					Utilities:Print(string.format('ML Director adjusted bot difficulty to %.1f', newDifficulty), MSG_WARNING)
-				end
+				Say(string.format('bot difficulty %.1f -> %.1f%s', oldDifficulty, newDifficulty,
+					reason and (': '..reason) or ''), MSG_WARNING)
+				lastStatusTime = now
+				return
 			end
+		end
+		-- no change: a periodic status line so a quiet director isn't a mystery
+		if reason ~= nil and STATUS_INTERVAL > 0
+		and (lastStatusTime == nil or now - lastStatusTime >= STATUS_INTERVAL) then
+			lastStatusTime = now
+			Say(string.format('difficulty %.1f, %s', Settings.difficulty, reason))
 		end
 	end
 
 	local function SendSnapshot()
 		local ok, err = pcall(function()
-			local request = CreateHTTPRequest('POST', SERVER_URL..'/director')
+			local request = CreateHTTPRequest('POST', servers[serverIndex]..'/director')
 			request:SetHTTPRequestHeaderValue('Content-Type', 'application/json')
 			if ML.Api_Key ~= nil and ML.Api_Key ~= '' then
 				request:SetHTTPRequestHeaderValue('Authorization', ML.Api_Key)
 			end
 			request:SetHTTPRequestRawPostBody('application/json', mlJson.encode(BuildSnapshot()))
 			request:Send(function(response)
+				if not isEnabled then return end
 				if response.StatusCode == 200 then
-					failureCount = 0
+					OnConnected()
 					local success, resObj = pcall(function() return mlJson.decode(response.Body) end)
 					if success then ApplyDirective(resObj) end
 				elseif response.StatusCode == 401 then
 					-- wrong/missing key won't fix itself mid-game; say so plainly
-					Disable('server rejected the API key (HTTP 401) - run deploy-to-dota.bat and enter the key')
+					Disable('the server rejected the API key (HTTP 401). Run deploy-to-dota.bat and enter the key')
 				else
-					CountFailure('server unreachable at '..SERVER_URL..' (HTTP '..tostring(response.StatusCode)..')')
+					CountFailure('HTTP '..tostring(response.StatusCode)..' from '..servers[serverIndex])
 				end
 			end)
 		end)
@@ -143,7 +238,7 @@ do
 		if Flags.isSettingsFinalized and Settings ~= nil and Settings.difficulty ~= nil then
 			SendSnapshot()
 		end
-		return INTERVAL
+		return tickInterval
 	end
 
 	if isEnabled then
@@ -151,7 +246,7 @@ do
 			Timers:CreateTimer(timerName, {endTime = INTERVAL, callback = function() return MLDirector:Tick() end})
 		end)
 		if ok then
-			print('[MLDirector] started, target server: '..SERVER_URL)
+			print('[MLDirector] started, target server: '..table.concat(servers, ' then '))
 		else
 			print('[MLDirector] Timers:CreateTimer FAILED: '..tostring(err))
 		end
@@ -231,6 +326,9 @@ function FretBots:PlayersLoadedTimer()
 		EntityHurt:RegisterEvents()
 		Modifier:Initialize()
 		HeroHandicap:Initialize()
+		-- bot teams never run out of wards (needs AllBots from DataTables)
+		local okWards, errWards = pcall(WardStock.Initialize, WardStock)
+		if not okWards then print('[WardStock] failed: '..tostring(errWards)) end
 		-- Hero Specific extensions - these will stop themselves if they
 		-- determine that they are not enabled
 		-- Disabled until this works
@@ -303,11 +401,23 @@ end
 if not Flags.isFretBotsInitialized then
 	local teamNames = require 'bots.FunLib.aba_team_names'
 	if teamNames.maxTeamSize ~= 12 then return end
-	-- Welcome Message
-	Utilities:Print('Welcome to Open Hyper AI (OHA)! FretBots enabled: ' .. Version.number, MSG_GOOD, MATCH_READY)
+	-- Welcome Message (the fork build in chat proves which copy is running)
+	Utilities:Print('Welcome to Open Hyper AI (OHA)! FretBots enabled: ' .. Version.number
+		.. ' [neigh fork ' .. FORK_BUILD .. ']', MSG_GOOD, MATCH_READY)
+	-- Buff mode hands out its own GPM/XP/neutral items: both at once stack
+	if Buff ~= nil then
+		if Buff.isRunning then
+			Utilities:Print('Buff mode is also running, so bot bonuses stack. Start only FretBots next game.', MSG_BAD)
+		else
+			Timers:RemoveTimer(Buff.initTimerName or 'InitTimer')
+			Buff.isCancelled = true
+			Utilities:Print('Buff mode was started too; cancelled it (FretBots already covers its bonuses).', MSG_WARNING)
+		end
+	end
 	-- Register the listener that will run Initialize() once the game starts
 	Utilities:RegsiterGameStateListener(FretBots, 'Initialize', DOTA_GAMERULES_STATE_PRE_GAME )
 	Flags.isFretBotsInitialized = true
+	NeighFretBotsStarted = true
 else
-	print("Fretbots mode has already been enabled for this game.")
+	Utilities:Print('FretBots is already running for this game [neigh fork ' .. FORK_BUILD .. '].', MSG_GOOD)
 end

@@ -60,7 +60,11 @@ end
 -- One-time load announce: proves THIS copy of the scripts is what the game
 -- loaded, and the printed table address shows whether bots share a team VM
 -- (one identical line per team) or run isolated (one distinct line per bot).
-IQDebug('FightIQ lib loaded (build 2026-10-23), vm='..tostring(J))
+-- Bump on every behavior change (with FORK_BUILD in FretBots.lua). Also shown
+-- in the bots' first chat line, so chat tells local dev scripts (this fork)
+-- from the workshop copy.
+J.FORK_BUILD = '2026-10-30'
+IQDebug('FightIQ lib loaded (build '..J.FORK_BUILD..'), vm='..tostring(J))
 
 
 function J.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSellList )

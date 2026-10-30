@@ -240,6 +240,11 @@ Customize.LaneIQ = {
     -- enemy tower. Only affects idle positioning (never last-hit/deny).
     Freeze_When_Ahead = true,
     Freeze_Pullback = 250,   -- extra units to hold back when freezing
+    -- Pos 4/5 deny first and leave last hits to the cores. They still take
+    -- any creep no allied core (human or bot) is within this many units of,
+    -- so creeps aren't wasted while the core is dead, backing or elsewhere.
+    Support_Deny_Focus = true,
+    Support_Core_Claim_Radius = 800,
 }
 
 -- Draft IQ: on top of the existing counter-pick/synergy scoring, reward
@@ -306,7 +311,8 @@ Customize.ML = {
     -- primary fails.
     Server = 'https://dota.sunarjodaniel.xyz',
 
-    -- Plain-http fallback for the bots-VM bridge (LAN address of the server).
+    -- Plain-http LAN address of the same server. The director switches to it
+    -- after 3 failed calls to Server (and back again if this one fails too).
     Server_Fallback = 'http://192.168.18.200:5544',
 
     -- Optional API key, must match the server's ML_API_KEY. Empty = no auth.
@@ -322,6 +328,11 @@ Customize.ML = {
 
     -- Allow the server to change FretBots difficulty mid-game (rubber-band by model).
     Allow_Difficulty_Control = true,
+
+    -- Every change is announced in chat with the server's reason. Between
+    -- changes, a "[Director] difficulty X, <why>" status line appears every
+    -- this many game seconds. 0 = announce changes only.
+    Status_Interval = 180,
 }
 
 return Customize
