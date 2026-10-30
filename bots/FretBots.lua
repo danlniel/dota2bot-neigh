@@ -39,6 +39,7 @@ require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
 require 'bots.FretBots.HeroHandicap'
 require 'bots.FretBots.CounterSwap'
+require 'bots.FretBots.WardStock'
 
 -- =====================================================================
 -- ML Director (adaptive difficulty via model server, see ml/README.md)
@@ -289,6 +290,9 @@ function FretBots:PlayersLoadedTimer()
 		EntityHurt:RegisterEvents()
 		Modifier:Initialize()
 		HeroHandicap:Initialize()
+		-- bot teams never run out of wards (needs AllBots from DataTables)
+		local okWards, errWards = pcall(WardStock.Initialize, WardStock)
+		if not okWards then print('[WardStock] failed: '..tostring(errWards)) end
 		-- Hero Specific extensions - these will stop themselves if they
 		-- determine that they are not enabled
 		-- Disabled until this works
