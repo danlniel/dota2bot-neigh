@@ -117,9 +117,21 @@ still works, bots simply use the static settings.
 
 ### Step 4 — Play
 
-1. Dota 2 → Play → **Custom Lobby** → Server Location: **Local Host**.
-2. Add bots, start. Bot names ending in **".OHA"** = install worked.
-3. **Difficulty is automatic in this fork** — no vote, no setting. Games start
+1. Dota 2 → Play → **Custom Lobby** → Server Location: **Local Host**,
+   **Enable Cheats** on, bot script **Local Dev Script** for both teams.
+   ("Open Hyper AI" runs the upstream workshop copy, without this fork.)
+2. Add bots, start. The bots' first chat line ends in `[neigh build <date>]`
+   when the lobby runs this fork.
+3. **Start FretBots** (bonuses, adaptive difficulty, `[Director]` chat): press
+   **F11** any time after the lobby loads, or type `neigh` in the console.
+   The deploy script sets both up; restart Dota once after the first deploy.
+   Without the deploy script, type `sv_cheats 1; script_reload_code bots/fretbots`.
+   It can't start by itself: a normal lobby runs no server script on its own.
+   - `bots/Buff/buff` is the upstream *light* mode (GPM, XP, neutral items
+     only). It has none of the fork's director, ward stock or house rules,
+     and it refuses to start on top of FretBots.
+   - Pressing the key twice, or before hero selection, is harmless now.
+4. **Difficulty is automatic in this fork** — no vote, no setting. Games start
    at a neutral level and the ML server steers bot bonuses up/down during the
    game (kills + networth) to keep the match close. Changes are announced in
    chat. Ally bots and enemy bots are treated the same. (No ML server

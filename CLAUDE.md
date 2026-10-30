@@ -21,8 +21,8 @@ Non-negotiables (details in that file):
   never run the TSTL build without first porting those edits to `typescript/`.
 - **Never merge `upstream/pr-140-refactor` or other wholesale upstream rewrites.**
   Cherry-pick individual fixes.
-- **Shipping behavior changes:** bump the build date in the `jmz_func.lua`
-  `IQDebug` load line and the `FretBots.lua` banner. Then push, because the
+- **Shipping behavior changes:** bump the build date in `J.FORK_BUILD`
+  (`jmz_func.lua`) and `FORK_BUILD` (`FretBots.lua`). Then push, because the
   gaming PC deploys via `git pull`.
 
 ## Project Overview

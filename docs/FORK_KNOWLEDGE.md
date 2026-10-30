@@ -175,8 +175,27 @@ Menace list: `J.tRightclickMenace` in `jmz_func.lua`.
   - The FretBots banner should end in `[neigh fork YYYY-MM-DD]`.
   - Without these, the game ran stale scripts and proves nothing. That happened
     on 2026-08-20.
-  - **Bump both dates when shipping behavior changes**: `jmz_func.lua` (the
-    `IQDebug` load line) and `FretBots.lua`.
+  - **Bump both dates when shipping behavior changes**: `J.FORK_BUILD` in
+    `jmz_func.lua` and `FORK_BUILD` in `FretBots.lua`. The bots' first chat
+    line shows `[neigh build <J.FORK_BUILD>]`. The FretBots welcome line shows
+    `[neigh fork <FORK_BUILD>]`.
+- **Starting FretBots.** Nothing in a normal lobby runs server Lua by itself,
+  and the bots VM can't run console commands. So the deploy script writes
+  `game\dota\cfg\neigh_bots.cfg` (alias `neigh` plus an F11 bind, rewritten
+  every deploy; `-StartKey none` skips the bind) and one `exec neigh_bots`
+  line in `autoexec.cfg`. FretBots now:
+  - waits for hero selection when started early (it used to print a
+    console-only refusal);
+  - answers a second run with a chat line instead of starting twice;
+  - cancels Buff mode, or warns if Buff is already paying out. Buff refuses
+    to start on top of FretBots.
+  - `bots/Buff/buff` is upstream's light mode (GPM/XP/neutrals). It has none
+    of the fork's FretBots features. Running it instead of `bots/fretbots`
+    looks like "the director stopped talking".
+- **Lobby bot script:** "Open Hyper AI" = the upstream workshop copy, and
+  "Local Dev Script" = this fork. The deploy script warns when the workshop
+  item is subscribed. Check: the bots' first chat line ends in
+  `[neigh build …]` only under Local Dev Script.
 - **In-game chat:** `[Director] connected to …` within ~10 s of the horn
   means the director works. `[Director] OFF: the server rejected the API
   key` means the deploy is missing the key. `[Director] server unreachable`
