@@ -311,7 +311,8 @@ Customize.ML = {
     -- primary fails.
     Server = 'https://dota.sunarjodaniel.xyz',
 
-    -- Plain-http fallback for the bots-VM bridge (LAN address of the server).
+    -- Plain-http LAN address of the same server. The director switches to it
+    -- after 3 failed calls to Server (and back again if this one fails too).
     Server_Fallback = 'http://192.168.18.200:5544',
 
     -- Optional API key, must match the server's ML_API_KEY. Empty = no auth.
@@ -327,6 +328,11 @@ Customize.ML = {
 
     -- Allow the server to change FretBots difficulty mid-game (rubber-band by model).
     Allow_Difficulty_Control = true,
+
+    -- Every change is announced in chat with the server's reason. Between
+    -- changes, a "[Director] difficulty X, <why>" status line appears every
+    -- this many game seconds. 0 = announce changes only.
+    Status_Interval = 180,
 }
 
 return Customize

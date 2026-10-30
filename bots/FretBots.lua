@@ -57,30 +57,77 @@ do
 	end
 
 	local ML = mlCustomize.ML or {}
-	local SERVER_URL = ML.Server or 'http://127.0.0.1:5544'
 	local INTERVAL = ML.Director_Interval or 10
+	-- while every server is down, retry this often instead of giving up for
+	-- the whole game (one blip used to switch the director off for good)
+	local RETRY_INTERVAL = 60
+	-- chat status line every N game seconds between changes; 0 = changes only
+	local STATUS_INTERVAL = ML.Status_Interval or 180
 	local MAX_FAILURES = 3
 	local ALLOW_DIFFICULTY_CONTROL = ML.Allow_Difficulty_Control ~= false
+
+	-- primary (public URL), then the LAN fallback: tried in turn on failure
+	local servers = { ML.Server or 'http://127.0.0.1:5544' }
+	if ML.Server_Fallback ~= nil and ML.Server_Fallback ~= '' and ML.Server_Fallback ~= servers[1] then
+		table.insert(servers, ML.Server_Fallback)
+	end
+	local serverIndex = 1
 
 	MLDirector = MLDirector or {}
 	local isEnabled = ML.Enable ~= false
 	local failureCount = 0
+	local tickInterval = INTERVAL
+	local isOnline = false
+	local hasConnected = false
+	local isOutageAnnounced = false
+	local lastStatusTime = nil
 	local timerName = 'MLDirectorTimer'
-	local hasAnnouncedDisable = false
+
+	-- Director lines go to chat (and console), so the player can follow
+	-- what the server decides and why
+	local function Say(msg, msgType)
+		print('[MLDirector] '..msg)
+		Utilities:Print('[Director] '..msg, msgType or MSG_CONSOLE_GOOD)
+	end
 
 	local function Disable(reason)
 		isEnabled = false
-		if not hasAnnouncedDisable then
-			hasAnnouncedDisable = true
-			print('[MLDirector] disabled: '..tostring(reason)..' (static FretBots difficulty rules apply)')
-		end
+		Say(string.format('OFF: %s. Bot difficulty stays at %.1f.', tostring(reason), Settings and Settings.difficulty or 0), MSG_BAD)
 		Timers:RemoveTimer(timerName)
 	end
 
 	local function CountFailure(what)
 		failureCount = failureCount + 1
-		if failureCount >= MAX_FAILURES then
-			Disable(tostring(what)..' after '..MAX_FAILURES..' consecutive failures')
+		if failureCount % MAX_FAILURES ~= 0 then return end
+		-- MAX_FAILURES in a row on this server: try the next one
+		local failedUrl = servers[serverIndex]
+		serverIndex = serverIndex % #servers + 1
+		if #servers > 1 then
+			print('[MLDirector] '..failedUrl..' failing ('..tostring(what)..'), trying '..servers[serverIndex])
+		end
+		if failureCount >= MAX_FAILURES * #servers then
+			isOnline = false
+			tickInterval = RETRY_INTERVAL
+			if not isOutageAnnounced then
+				isOutageAnnounced = true
+				Say(string.format('server unreachable (%s). Retrying every %ds; bot difficulty stays at %.1f meanwhile.',
+					tostring(what), RETRY_INTERVAL, Settings.difficulty), MSG_BAD)
+			end
+		end
+	end
+
+	local function OnConnected()
+		failureCount = 0
+		tickInterval = INTERVAL
+		if isOnline then return end
+		isOnline = true
+		isOutageAnnounced = false
+		if hasConnected then
+			Say('server back online ('..servers[serverIndex]..').', MSG_GOOD)
+		else
+			hasConnected = true
+			Say(string.format('connected to %s. Bot difficulty starts at %.1f and adapts to keep the game close.',
+				servers[serverIndex], Settings.difficulty), MSG_GOOD)
 		end
 	end
 
@@ -96,36 +143,47 @@ do
 
 	local function ApplyDirective(resObj)
 		if type(resObj) ~= 'table' then return end
+		local reason = type(resObj.reason) == 'string' and resObj.reason or nil
+		local now = Utilities:GetTime()
 		if ALLOW_DIFFICULTY_CONTROL and type(resObj.difficulty) == 'number' then
+			local oldDifficulty = Settings.difficulty
 			local newDifficulty = math.max(0, math.min(10, resObj.difficulty))
-			if newDifficulty ~= Settings.difficulty then
+			if newDifficulty ~= oldDifficulty then
 				Settings.difficulty = newDifficulty
 				Settings.difficultyScale = Settings:CalculateDifficultyScale(newDifficulty)
-				if resObj.announce then
-					Utilities:Print(string.format('ML Director adjusted bot difficulty to %.1f', newDifficulty), MSG_WARNING)
-				end
+				Say(string.format('bot difficulty %.1f -> %.1f%s', oldDifficulty, newDifficulty,
+					reason and (': '..reason) or ''), MSG_WARNING)
+				lastStatusTime = now
+				return
 			end
+		end
+		-- no change: a periodic status line so a quiet director isn't a mystery
+		if reason ~= nil and STATUS_INTERVAL > 0
+		and (lastStatusTime == nil or now - lastStatusTime >= STATUS_INTERVAL) then
+			lastStatusTime = now
+			Say(string.format('difficulty %.1f, %s', Settings.difficulty, reason))
 		end
 	end
 
 	local function SendSnapshot()
 		local ok, err = pcall(function()
-			local request = CreateHTTPRequest('POST', SERVER_URL..'/director')
+			local request = CreateHTTPRequest('POST', servers[serverIndex]..'/director')
 			request:SetHTTPRequestHeaderValue('Content-Type', 'application/json')
 			if ML.Api_Key ~= nil and ML.Api_Key ~= '' then
 				request:SetHTTPRequestHeaderValue('Authorization', ML.Api_Key)
 			end
 			request:SetHTTPRequestRawPostBody('application/json', mlJson.encode(BuildSnapshot()))
 			request:Send(function(response)
+				if not isEnabled then return end
 				if response.StatusCode == 200 then
-					failureCount = 0
+					OnConnected()
 					local success, resObj = pcall(function() return mlJson.decode(response.Body) end)
 					if success then ApplyDirective(resObj) end
 				elseif response.StatusCode == 401 then
 					-- wrong/missing key won't fix itself mid-game; say so plainly
-					Disable('server rejected the API key (HTTP 401) - run deploy-to-dota.bat and enter the key')
+					Disable('the server rejected the API key (HTTP 401). Run deploy-to-dota.bat and enter the key')
 				else
-					CountFailure('server unreachable at '..SERVER_URL..' (HTTP '..tostring(response.StatusCode)..')')
+					CountFailure('HTTP '..tostring(response.StatusCode)..' from '..servers[serverIndex])
 				end
 			end)
 		end)
@@ -143,7 +201,7 @@ do
 		if Flags.isSettingsFinalized and Settings ~= nil and Settings.difficulty ~= nil then
 			SendSnapshot()
 		end
-		return INTERVAL
+		return tickInterval
 	end
 
 	if isEnabled then
@@ -151,7 +209,7 @@ do
 			Timers:CreateTimer(timerName, {endTime = INTERVAL, callback = function() return MLDirector:Tick() end})
 		end)
 		if ok then
-			print('[MLDirector] started, target server: '..SERVER_URL)
+			print('[MLDirector] started, target server: '..table.concat(servers, ' then '))
 		else
 			print('[MLDirector] Timers:CreateTimer FAILED: '..tostring(err))
 		end
