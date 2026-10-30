@@ -1,5 +1,41 @@
-if not GameRules or GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
-	print('Start a lobby game and try to enable Fretbots after entering the Hero Selection phase.')
+if not GameRules then
+	print('Start a Local Host lobby first, then run: sv_cheats 1; script_reload_code bots/fretbots')
+	return
+end
+-- Started before hero selection (the F11 bind pressed on the loading screen,
+-- or typed too early): wait and start at hero selection. This used to print
+-- a console-only refusal, which looked exactly like FretBots being on.
+if GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
+	if not NeighFretBotsDeferred then
+		local ok, err = pcall(function()
+			GameRules:GetGameModeEntity():SetContextThink('NeighFretBotsDeferredStart', function()
+				if GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then return 1 end
+				NeighFretBotsDeferred = nil
+				if dofile == nil then
+					SendToServerConsole('script_reload_code bots/fretbots')
+					return nil
+				end
+				local okStart, errStart = pcall(dofile, 'bots/FretBots')
+				if not okStart then print('[FretBots] deferred start FAILED: '..tostring(errStart)) end
+				return nil
+			end, 1)
+		end)
+		if ok then
+			NeighFretBotsDeferred = true
+			print('[FretBots] started before hero selection: it will switch on when hero selection begins')
+		else
+			print('[FretBots] too early to start ('..tostring(err)..'). Run it again once hero selection begins.')
+		end
+	end
+	return
+end
+-- Bump on every behavior change (with J.FORK_BUILD in FunLib/jmz_func.lua)
+local FORK_BUILD = '2026-10-30'
+-- A second run (key pressed twice) must not start a second director or
+-- re-register listeners. A plain global survives the re-run even if the
+-- engine reloads modules (Flags.lua resets its flags when re-executed).
+if NeighFretBotsStarted then
+	GameRules:SendCustomMessage('FretBots is already running for this game [neigh fork ' .. FORK_BUILD .. '].', 0, 0)
 	return
 end
 -- LinkLuaModifier("modifier_fret_damage_increase", "FretBots/modifiers/modifier_seasonal_party_hat.lua", LUA_MODIFIER_MOTION_NONE)
@@ -8,7 +44,7 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 local Version = require 'bots.FunLib.version'
 -- Print version to console. The [neigh fork] marker proves THIS file is the
 -- one loading (and not a subscribed workshop copy resolving instead).
-print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork 2026-10-30]')
+print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number .. ' [neigh fork ' .. FORK_BUILD .. ']')
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
@@ -365,11 +401,23 @@ end
 if not Flags.isFretBotsInitialized then
 	local teamNames = require 'bots.FunLib.aba_team_names'
 	if teamNames.maxTeamSize ~= 12 then return end
-	-- Welcome Message
-	Utilities:Print('Welcome to Open Hyper AI (OHA)! FretBots enabled: ' .. Version.number, MSG_GOOD, MATCH_READY)
+	-- Welcome Message (the fork build in chat proves which copy is running)
+	Utilities:Print('Welcome to Open Hyper AI (OHA)! FretBots enabled: ' .. Version.number
+		.. ' [neigh fork ' .. FORK_BUILD .. ']', MSG_GOOD, MATCH_READY)
+	-- Buff mode hands out its own GPM/XP/neutral items: both at once stack
+	if Buff ~= nil then
+		if Buff.isRunning then
+			Utilities:Print('Buff mode is also running, so bot bonuses stack. Start only FretBots next game.', MSG_BAD)
+		else
+			Timers:RemoveTimer(Buff.initTimerName or 'InitTimer')
+			Buff.isCancelled = true
+			Utilities:Print('Buff mode was started too; cancelled it (FretBots already covers its bonuses).', MSG_WARNING)
+		end
+	end
 	-- Register the listener that will run Initialize() once the game starts
 	Utilities:RegsiterGameStateListener(FretBots, 'Initialize', DOTA_GAMERULES_STATE_PRE_GAME )
 	Flags.isFretBotsInitialized = true
+	NeighFretBotsStarted = true
 else
-	print("Fretbots mode has already been enabled for this game.")
+	Utilities:Print('FretBots is already running for this game [neigh fork ' .. FORK_BUILD .. '].', MSG_GOOD)
 end

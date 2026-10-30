@@ -1,3 +1,14 @@
+-- FretBots covers everything Buff mode does (GPM, XP, neutral items) and
+-- more; running both stacks the bonuses. A second Buff run would add a
+-- second bonus loop. Say so in chat instead of silently doubling up.
+if NeighFretBotsStarted or (Flags ~= nil and Flags.isFretBotsInitialized) then
+    GameRules:SendCustomMessage('Buff mode not started: FretBots is already running and includes its bonuses.', 0, 0)
+    return
+end
+if Buff ~= nil and Buff.isStarted then
+    GameRules:SendCustomMessage('Buff mode is already running for this game.', 0, 0)
+    return
+end
 -- Version information
 local Version = require 'bots.FunLib.version'
 if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" end end
@@ -19,6 +30,8 @@ if Buff == nil
 then
     Buff = {}
 end
+Buff.isStarted = true
+Buff.initTimerName = InitTimerName
 
 local Colors =
 {
@@ -71,6 +84,8 @@ function Buff:Init()
         return 1
     end
     Timers:RemoveTimer(InitTimerName)
+    if Buff.isCancelled then return nil end  -- FretBots took over
+    Buff.isRunning = true
     print('[Buff] Initing Buff...')
 
     Buff:AddBotsToTable()
@@ -117,5 +132,6 @@ function Buff:ColorString(msg, color)
 end
 
 Buff:Print('Buff mode initialized. Version: ' .. Version.number, Colors.good)
+Buff:Print('Buff mode is the light mode: GPM, XP and neutral items only. The adaptive director, ward stock and house rules need FretBots: press F11, or type neigh in the console.', Colors.warning)
 Buff:Print("Bot link for any feedback: https://github.com/forest0xia/dota2bot-OpenHyperAI . Kudos to BeginnerAI, Fretbots, and ryndrb@; and thanks all for sharing your ideas.", Colors.consoleGood)
 Timers:CreateTimer(InitTimerName, {endTime = 1, callback = Buff['Init']} )

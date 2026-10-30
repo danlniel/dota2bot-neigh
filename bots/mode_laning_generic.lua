@@ -370,7 +370,7 @@ function AnnounceMessages()
 			local isFirstLine  = (numberAnnouncePrinted == 1)
 			if message then
 				-- Match original behavior: first line (or if no enemy bots) can be global
-				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number) or message, enemyBots == 0 or isFirstLine)
+				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number .. ' [neigh build ' .. tostring(J.FORK_BUILD) .. ']') or message, enemyBots == 0 or isFirstLine)
 			end
 			numberAnnouncePrinted   = numberAnnouncePrinted + 1
 			lastAnnouncePrintedTime = GameTime()

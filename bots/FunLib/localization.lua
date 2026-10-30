@@ -10,7 +10,7 @@ local Localization = {
         welcome_msgs = {
             "Welcome to Open Neigh AI (OHA): ",
             "You can select the heroes for bots to pick, e.g. 10 same heroes or your dream teams, or change their names. Just customize bots in the Customize/general file.",
-            "If you feel bots are weak, try enabling the enhanced Fretbots mode to make the game a lot more challenging. Check Workshop page for details.",
+            "No [Director] lines in chat? FretBots isn't on: press F11, or type in the console: sv_cheats 1; script_reload_code bots/fretbots",
             "You can type `!pos X` to swap position with a bot. For example, type: `!pos 2` to go mid lane. Type `!3pos 5` to ask the 3rd bot on the team to play position 5.",
             -- "Note, after the update of 7.38, the `!pos X` command is disabled temporarily for Dire team",
             "You can type `!sp zh` for ally bots to 说中文, or `!sp en` for English, `!sp ru` for русский, `!sp ja` for 日本語. Not 100% translated, just be patient.",
